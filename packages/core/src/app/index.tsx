@@ -1,4 +1,5 @@
 import * as React from "react";
+import { notFound } from "next/navigation";
 import type { TenantConfig } from "../extend/types.js";
 import { formatMoney } from "../extend/index.js";
 import { createRuntime } from "../domain/runtime.js";
@@ -35,13 +36,13 @@ export async function CoreApp({
   if (section === "invoices" && config.features.invoicing)
     return <Invoices db={db} runtime={runtime} />;
 
-  return (
-    <Card title="Not found">
-      <p style={{ margin: 0, fontSize: 14 }}>
-        No page at <code>/{slug.join("/")}</code>.
-      </p>
-    </Card>
-  );
+  // A real 404, not a styled card served with HTTP 200.
+  //
+  // The catch-all matches every path, so without this every URL in every tenant
+  // returns 200 — which would silently defeat the deploy smoke test in
+  // .github/workflows/deploy.yml: a tenant whose routing was completely broken
+  // would still report healthy. Tenants can brand the page with app/not-found.tsx.
+  notFound();
 }
 
 type Runtime = ReturnType<typeof createRuntime>;
@@ -107,7 +108,9 @@ async function JobsList({ db, runtime }: { db: DataStore; runtime: Runtime }) {
 
 async function JobDetail({ id, config, db, runtime }: { id: string; config: TenantConfig; db: DataStore; runtime: Runtime }) {
   const job = await db.getJob(id);
-  if (!job) return <Card title="Not found"><p style={{ margin: 0 }}>No job {id}.</p></Card>;
+  // Same reason as the catch-all: a missing job is a 404, not a 200 with an
+  // apologetic card. Monitoring and the deploy smoke test both read status codes.
+  if (!job) notFound();
 
   const customer = await db.getCustomer(job.customerId);
   const site = await db.getSite(job.siteId);

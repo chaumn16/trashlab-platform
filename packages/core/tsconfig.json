@@ -1,8 +1,13 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    // Core is consumed only by Next.js apps, which bundle it. Bundler
+    // resolution is what lets it see next/navigation; NodeNext cannot.
+    // Every relative import in src/ carries an explicit .js extension, so the
+    // emitted ESM still resolves under plain Node (the conformance suite runs
+    // dist/ directly via node --test).
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM"],
     "jsx": "react-jsx",
     "strict": true,
