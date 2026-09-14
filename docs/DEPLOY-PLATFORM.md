@@ -67,8 +67,25 @@ That produces `dist-releases/trashlab-core-<version>.tgz` (~22KB). To release it
 
 ```bash
 cd packages/core && npm version minor    # 4.2.3 → 4.3.0
+cd ../.. && npm install                  # refresh the root lockfile
 git push --follow-tags
 ```
+
+**Don't skip the `npm install`.** `npm version` inside a workspace leaves the
+root `package-lock.json` describing the old version, and the next CI run installs
+against a lockfile that disagrees with the tree.
+
+The demo tenants in `tenants/` depend on `"@trashlab/core": "*"` precisely so a
+version bump cannot break them — they link the workspace whatever its version.
+Pinning them to an exact version means every core release breaks `npm install` at
+the repo root until all of them are updated in lockstep:
+
+```
+npm error 404  '@trashlab/core@4.2.3' is not in this registry
+```
+
+npm cannot satisfy an exact version from a workspace at a different version, so it
+falls through to the public registry — where `@trashlab/core` does not exist.
 
 Pushing the tag runs
 [`.github/workflows/release.yml`](../.github/workflows/release.yml), which
