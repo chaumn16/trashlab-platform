@@ -1,0 +1,13 @@
+{
+  "_comment": "Control-plane owned. Protected by CODEOWNERS — agents and tenant engineers cannot edit this file. The fleet controller is the only writer.",
+  "tenantId": "acme",
+  "tier": "dedicated",
+  "channel": "stable",
+  "coreVersion": "4.2.3",
+  "vercelProject": "tenant-acme",
+  "domain": "acme.trashlab.app",
+  "database": "tenant-acme",
+  "region": "iad1",
+  "createdAt": "2026-03-02T10:14:00Z",
+  "pinExpiry": null
+}

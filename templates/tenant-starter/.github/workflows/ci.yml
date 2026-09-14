@@ -1,0 +1,69 @@
+name: CI
+
+# Runs on every PR, including the ones opened by AI agents and by the fleet
+# controller's core-version bumps. Branch protection requires this to pass, so
+# it is the single gate that keeps bad tenant code out of production.
+#
+# BUDGET: this workflow must finish in under 2 minutes. It runs ~2,000 times on
+# every core release and its duration is a direct multiplier on how fast we can
+# patch the fleet.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          registry-url: https://npm.pkg.github.com
+          scope: "@trashlab"
+
+      - name: Install
+        run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.CORE_REGISTRY_TOKEN }}
+
+      # The import boundary. Fails if tenant code reached past
+      # @trashlab/core/extend into core internals.
+      - name: Import boundary
+        run: npm run lint
+
+      - name: Types
+        run: npx tsc --noEmit
+
+      # The core contract. Determinism, non-negative pricing, line-item
+      # reconciliation, core invariants that tenant code may not loosen.
+      - name: Core conformance
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Reports the result to the control plane so the fleet dashboard shows
+      # which tenants are green against which core version — this is how we
+      # know a core release is safe to promote to the next batch.
+      - name: Report to control plane
+        if: always()
+        run: |
+          curl -sS -X POST "$CONTROL_PLANE_URL/api/ci-result" \
+            -H "Authorization: Bearer $CONTROL_PLANE_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"tenantId\":\"${{ github.event.repository.name }}\",
+                 \"sha\":\"${{ github.sha }}\",
+                 \"pr\":\"${{ github.event.number }}\",
+                 \"status\":\"${{ job.status }}\"}" || true
+        env:
+          CONTROL_PLANE_URL: ${{ vars.CONTROL_PLANE_URL }}
+          CONTROL_PLANE_TOKEN: ${{ secrets.CONTROL_PLANE_TOKEN }}

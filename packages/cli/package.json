@@ -1,0 +1,8 @@
+{
+  "name": "@trashlab/cli",
+  "version": "1.4.0",
+  "description": "Control-plane client. Provisions, deploys, and rolls out across the tenant fleet.",
+  "type": "module",
+  "bin": { "platform": "./bin/platform.mjs" },
+  "files": ["bin", "lib"]
+}

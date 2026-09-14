@@ -1,0 +1,94 @@
+name: Deploy
+
+# Merge to main deploys this tenant, and only this tenant.
+#
+# Deploy credentials are scoped per repo: VERCEL_TOKEN here can reach exactly
+# one Vercel project. A compromised or misbehaving agent in this repo cannot
+# deploy to, read from, or damage any other tenant.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      core_version:
+        description: "Override core version (fleet controller uses this for rollout and rollback)"
+        required: false
+
+concurrency:
+  group: deploy-${{ github.repository }}
+  cancel-in-progress: false   # never cancel a deploy mid-flight
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          registry-url: https://npm.pkg.github.com
+          scope: "@trashlab"
+
+      - name: Install
+        run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.CORE_REGISTRY_TOKEN }}
+
+      # Forward-only, runs before the new build takes traffic. Core migrations
+      # are expand/contract so a rollback to the previous build stays compatible
+      # with the migrated schema.
+      - name: Migrate tenant database
+        run: npx @trashlab/core migrate --database "$DATABASE_URL"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Deploy to Vercel
+        id: deploy
+        run: |
+          npm i -g vercel@latest
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel build --prod --token="$VERCEL_TOKEN"
+          URL=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+
+      # Post-deploy smoke test. A green build that renders a 500 is still a
+      # failed deploy; at 2,000 tenants nobody is watching individual sites.
+      - name: Smoke test
+        run: |
+          set -e
+          for path in / /jobs /customers; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.deploy.outputs.url }}$path")
+            echo "$path -> $code"
+            [ "$code" = "200" ] || exit 1
+          done
+
+      # Failing the smoke test rolls this tenant back immediately rather than
+      # waiting for the fleet health gate to notice.
+      - name: Rollback on smoke failure
+        if: failure() && steps.deploy.outcome == 'success'
+        run: vercel rollback --token="$VERCEL_TOKEN" --yes
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Report deploy to control plane
+        if: always()
+        run: |
+          curl -sS -X POST "$CONTROL_PLANE_URL/api/deploy-result" \
+            -H "Authorization: Bearer $CONTROL_PLANE_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"tenantId\":\"${{ github.event.repository.name }}\",
+                 \"status\":\"${{ job.status }}\",
+                 \"url\":\"${{ steps.deploy.outputs.url }}\",
+                 \"sha\":\"${{ github.sha }}\"}" || true
+        env:
+          CONTROL_PLANE_URL: ${{ vars.CONTROL_PLANE_URL }}
+          CONTROL_PLANE_TOKEN: ${{ secrets.CONTROL_PLANE_TOKEN }}

@@ -1,0 +1,154 @@
+# Deploying a tenant
+
+Every tenant is an independent Vercel project, backed by its own GitHub repo and
+its own Postgres database, running a pinned version of `@trashlab/core`.
+
+There are four procedures. Only the first involves a human decision.
+
+---
+
+## 1. Add a new tenant
+
+Triggered by **sales**, from the control-plane console or the CLI. No engineer.
+
+```bash
+platform tenant add northwind --name="Northwind Disposal" --plan=growth --apply
+```
+
+Seven automated steps, ~4 minutes end to end:
+
+| # | Step | Result |
+|---|------|--------|
+| 1 | Scaffold repo from `templates/tenant-starter` | placeholders substituted |
+| 2 | Create GitHub repo, protect `main` | CODEOWNERS + required checks live |
+| 3 | Provision Postgres | dedicated DB, tenant's region |
+| 4 | Create Vercel project | linked to the repo, `DATABASE_URL` injected |
+| 5 | Attach domain | `northwind.trashlab.app`, TLS issued |
+| 6 | Migrate + deploy | core `stable`, smoke-tested |
+| 7 | Register | tenant appears in `platform fleet status` |
+
+The command is **idempotent and resumable** — a failure at step 5 is fixed by
+re-running it, not by unpicking the first four steps.
+
+Drop `--apply` to see every API call without making one. That is the default,
+which is what makes this command safe to hand to a sales engineer: the
+destructive path needs both an explicit flag and a token they don't hold.
+
+### Verify
+
+```bash
+platform fleet status
+curl -sI https://northwind.trashlab.app | head -1    # expect 200
+```
+
+---
+
+## 2. Change a tenant's code
+
+The triage order matters. Most requests should stop at step 1.
+
+**① Config?** Toggle it in the console. No deploy, no PR, seconds.
+Feature flags, branding, custom field definitions.
+
+**② Extension point?** Edit the tenant repo — by hand or by agent.
+
+```bash
+git clone git@github.com:trashlab/tenant-northwind.git
+cd tenant-northwind && npm install
+# edit tenant.config.ts / extensions/ / app/ / migrations/
+npm test          # core conformance — run it before you push
+git checkout -b pricing-tweak && git commit -am "..." && git push
+```
+
+Opening the PR gets you a Vercel preview URL against a branched database.
+CI runs the import boundary, typecheck, conformance suite, and build. Merge
+deploys **that tenant only**.
+
+First time a tenant gets custom code, flag it:
+
+```bash
+platform tenant customize northwind --apply
+```
+
+This changes its rollout treatment — core bumps now open a reviewable PR instead
+of auto-merging.
+
+**③ Neither?** It's a platform request. Two options, in order of preference:
+
+- **Extend core** with a new named extension point — a semver-minor that every
+  tenant can then use. This is the outcome you want.
+- **Eject** to a fork. Requires VP sign-off and a written reason. Each ejection
+  is reviewed for the extension point that was missing.
+
+### What an agent may and may not touch
+
+Enforced by `CODEOWNERS` + branch protection, not by convention:
+
+| Writable by agent | Requires platform-team review |
+|---|---|
+| `tenant.config.ts` | `tenant.lock` (tier, channel, core version) |
+| `extensions/` | `.github/` (CI and deploy) |
+| `app/` (custom routes) | `package.json` / `package-lock.json` |
+| `migrations/` | `next.config.mjs`, `CODEOWNERS` |
+| `tests/` | |
+
+An agent cannot change its own core version, edit CI, or reach deploy secrets.
+Its worst case is a red build on one tenant.
+
+---
+
+## 3. Deploy a single tenant
+
+```bash
+platform tenant deploy northwind --apply                        # current pin
+platform tenant deploy northwind --core-version=4.3.0 --apply   # bump, then deploy
+```
+
+Merging to `main` does the same thing automatically via `.github/workflows/deploy.yml`:
+migrate → build → deploy → smoke test `/`, `/jobs`, `/customers` → auto-rollback
+if any path is non-200.
+
+A green build that renders a 500 is still a failed deploy. At 2,000 tenants
+nobody is watching individual sites, so the smoke test is not optional.
+
+---
+
+## 4. Roll back
+
+```bash
+vercel rollback --token=$VERCEL_TOKEN --yes     # instant, previous build
+platform tenant deploy northwind --core-version=4.2.3 --apply   # pin backwards
+```
+
+Core migrations are expand/contract, so the previous build stays compatible with
+the migrated schema. This is the property that makes rollback safe, and it is a
+hard rule on every core migration — see `RUNBOOK-rollout.md`.
+
+---
+
+## Secrets
+
+Per-repo, scoped to one tenant. A compromised agent or leaked token in one repo
+cannot reach another tenant.
+
+| Secret | Scope |
+|---|---|
+| `VERCEL_TOKEN` | one Vercel project |
+| `DATABASE_URL` | one Postgres database |
+| `CORE_REGISTRY_TOKEN` | read-only, `@trashlab` packages |
+| `CONTROL_PLANE_TOKEN` | write CI/deploy status for this tenant only |
+
+Repo variables: `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `CONTROL_PLANE_URL`.
+
+---
+
+## Vercel capacity
+
+Three limits to settle with Vercel before the fleet passes ~400 tenants:
+
+1. **Projects per team.** 2,000 needs an Enterprise agreement.
+2. **Build concurrency.** This is the real constraint. A fleet-wide core bump is
+   2,000 builds that serialize against your concurrency limit — it directly sets
+   your "how fast can we patch a CVE" SLA. Negotiate this number explicitly.
+3. **Per-tenant regions.** Set at provision time; the only supported path for
+   customers with data-residency terms.

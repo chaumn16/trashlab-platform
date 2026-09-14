@@ -1,0 +1,13 @@
+{
+  "_comment": "Control-plane owned. Protected by CODEOWNERS — agents and tenant engineers cannot edit this file. The fleet controller is the only writer.",
+  "tenantId": "globex",
+  "tier": "dedicated",
+  "channel": "beta",
+  "coreVersion": "4.2.3",
+  "vercelProject": "tenant-globex",
+  "domain": "globex.trashlab.app",
+  "database": "tenant-globex",
+  "region": "iad1",
+  "createdAt": "2026-05-19T15:40:00Z",
+  "pinExpiry": null
+}

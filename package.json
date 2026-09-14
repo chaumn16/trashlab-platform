@@ -1,0 +1,15 @@
+{
+  "name": "trashlab-platform",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*",
+    "tenants/*"
+  ],
+  "scripts": {
+    "build:core": "npm run build -w @trashlab/core",
+    "conformance": "node --test packages/core/dist/conformance/*.test.js",
+    "platform": "node packages/cli/bin/platform.mjs"
+  },
+  "engines": { "node": ">=20" }
+}

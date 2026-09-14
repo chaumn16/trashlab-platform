@@ -1,0 +1,63 @@
+{
+  "_comment": "The tenant registry — source of truth for the fleet. In production this is a Postgres table behind the control-plane API; a JSON file here so the CLI is runnable without infrastructure. Every field is control-plane owned; nothing in a tenant repo can write to it.",
+  "coreChannels": {
+    "canary": "4.3.0-rc.2",
+    "beta": "4.3.0-rc.1",
+    "stable": "4.2.3"
+  },
+  "tenants": [
+    {
+      "id": "acme",
+      "displayName": "Acme Waste Services",
+      "tier": "dedicated",
+      "channel": "stable",
+      "coreVersion": "4.2.3",
+      "vercelProject": "tenant-acme",
+      "domain": "acme.trashlab.app",
+      "database": "tenant-acme",
+      "region": "iad1",
+      "repo": "trashlab/tenant-acme",
+      "plan": "growth",
+      "hasCustomCode": false,
+      "createdAt": "2026-03-02T10:14:00Z",
+      "lastDeploy": "2026-09-11T18:22:04Z",
+      "health": "green"
+    },
+    {
+      "id": "globex",
+      "displayName": "Globex Industrial",
+      "tier": "dedicated",
+      "channel": "beta",
+      "coreVersion": "4.3.0-rc.1",
+      "vercelProject": "tenant-globex",
+      "domain": "globex.trashlab.app",
+      "database": "tenant-globex",
+      "region": "iad1",
+      "repo": "trashlab/tenant-globex",
+      "plan": "enterprise",
+      "hasCustomCode": true,
+      "createdAt": "2026-05-19T15:40:00Z",
+      "lastDeploy": "2026-09-13T11:07:51Z",
+      "health": "green"
+    },
+    {
+      "id": "initech",
+      "displayName": "Initech Sanitation",
+      "tier": "dedicated",
+      "channel": "pinned",
+      "coreVersion": "3.9.4",
+      "vercelProject": "tenant-initech",
+      "domain": "initech.trashlab.app",
+      "database": "tenant-initech",
+      "region": "sfo1",
+      "repo": "trashlab/tenant-initech",
+      "plan": "growth",
+      "hasCustomCode": false,
+      "createdAt": "2025-11-08T09:05:00Z",
+      "lastDeploy": "2026-01-22T14:31:09Z",
+      "health": "stale",
+      "pinExpiry": "2026-10-01T00:00:00Z",
+      "pinReason": "Customer froze changes during their ERP migration. Owner: dana@trashlab.com"
+    }
+  ]
+}

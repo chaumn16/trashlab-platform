@@ -1,0 +1,22 @@
+# Protected paths. This file is the code-level enforcement of the agent blast
+# radius: an AI agent (or a tenant engineer) may open PRs touching the tenant's
+# own business logic, but anything that could compromise the fleet requires
+# platform-team review.
+#
+# Combined with branch protection ("require review from Code Owners"), an agent
+# cannot: change its own core version, edit CI, reach deploy secrets, or alter
+# the tier/channel that governs its rollout behaviour.
+
+/tenant.lock            @trashlab/platform-team
+/.github/               @trashlab/platform-team
+/package.json           @trashlab/platform-team
+/package-lock.json      @trashlab/platform-team
+/CODEOWNERS             @trashlab/platform-team
+/next.config.mjs        @trashlab/platform-team
+
+# Everything below is the tenant's own surface — agents write here freely.
+# /tenant.config.ts
+# /extensions/
+# /app/
+# /migrations/
+# /tests/
