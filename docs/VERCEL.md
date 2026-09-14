@@ -107,13 +107,15 @@ resource that sets your CVE-patch SLA.
 Set **Project Settings → Git → Ignored Build Step** to a path filter, per tenant
 project:
 
-```bash
-git fetch --deepen=1 --quiet 2>/dev/null || true
-if ! git rev-parse --verify --quiet HEAD^ >/dev/null; then
-  echo "no parent commit available — building"
-  exit 1
-fi
-git diff --quiet HEAD^ HEAD -- tenants/acme packages/core
+```
+sh scripts/vercel-ignore-build.sh tenants/acme packages/core
+```
+
+Or, pasted directly — **it must be one line**, because Vercel runs the Ignored
+Build Step through `/bin/sh -c`:
+
+```
+git fetch --deepen=1 --quiet 2>/dev/null || true; git rev-parse --verify --quiet HEAD^ >/dev/null || exit 1; git diff --quiet HEAD^ HEAD -- tenants/acme packages/core
 ```
 
 Vercel's contract: **exit 0 skips the build, exit 1 continues it.** `git diff
@@ -123,8 +125,10 @@ core change still rebuilds the tenants that consume it.
 
 The `--deepen` and the guard are not decoration: **Vercel clones shallow (depth
 1)**, so `HEAD^` usually does not exist and a bare `git diff HEAD^ HEAD` exits
-`128` with `fatal: bad revision 'HEAD^'`. If no parent can be fetched, the script
-builds — an unnecessary build is cheaper than a silently skipped deployment.
+`128` with `fatal: bad revision 'HEAD^'`. If no parent can be fetched, it builds —
+an unnecessary build is cheaper than a silently skipped deployment. A multi-line
+`if … then … fi` fails differently: `syntax error near unexpected token 'then'`,
+because the whole thing arrives as one line.
 
 > Add this **after** the first successful deployment. On a new project, a filter
 > that skips means no first deployment at all.
@@ -430,7 +434,8 @@ platform tenant customize acme --apply
 | `Module not found: @trashlab/core` | **Path B**: Root Directory set but files outside it excluded | turn on "Include source files outside of the Root Directory" |
 | `Module not found: @trashlab/core` | **Path A**: `vendor/*.tgz` missing or `package.json` points at the wrong filename | restore the tarball, or `npm run link:core` for local work |
 | Every tenant rebuilds on any push | **Path B** with no path filter | set Ignored Build Step (Path B) |
-| `fatal: bad revision 'HEAD^'` in the build log | Ignored Build Step on Vercel's shallow clone | use the guarded form that deepens first (Path B) |
+| `fatal: bad revision 'HEAD^'` in the build log | Ignored Build Step on Vercel's shallow clone | use the script or single-line form (Path B) |
+| `syntax error near unexpected token 'then'` | multi-line if/then in the Ignored Build Step | Vercel runs it as one line — use the script or the `;`-separated form |
 | Tenant deploys but shows another tenant's branding | Root Directory points at the wrong `tenants/<slug>` | fix Root Directory, redeploy |
 | Build fails on `.ts` imports in tests | Node < 22.6 | Project Settings → Node.js Version → 22.x |
 | Deploy succeeds, site 500s | usually a missing env var, not a code bug | `vercel logs <url>` |

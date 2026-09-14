@@ -93,26 +93,32 @@ deploying this app.
 > deployment at all.
 
 With Vercel's Git integration, **any** push triggers a build — including README
-edits. Set **Project Settings → Git → Ignored Build Step** to:
+edits. Set **Project Settings → Git → Ignored Build Step**.
 
-```bash
-git fetch --deepen=1 --quiet 2>/dev/null || true
-if ! git rev-parse --verify --quiet HEAD^ >/dev/null; then
-  echo "no parent commit available — building"
-  exit 1
-fi
-git diff --quiet HEAD^ HEAD -- apps/control-plane registry
+**Use the committed script** — it is version-controlled, testable, and avoids the
+one-line shell problem below:
+
+```
+sh scripts/vercel-ignore-build.sh apps/control-plane registry
 ```
 
-Two things this handles that the obvious one-liner does not:
+If you would rather paste the logic directly, it **must be a single line**:
+
+```
+git fetch --deepen=1 --quiet 2>/dev/null || true; git rev-parse --verify --quiet HEAD^ >/dev/null || exit 1; git diff --quiet HEAD^ HEAD -- apps/control-plane registry
+```
+
+Two traps, both of which produce a failed build rather than a skipped one:
 
 **Vercel clones shallow (depth 1), so `HEAD^` usually does not exist.** A bare
 `git diff --quiet HEAD^ HEAD` fails with `fatal: bad revision 'HEAD^'` and exits
 **128** — outside the 0/1 contract entirely. `--deepen=1` fetches the one extra
-commit the comparison needs.
+commit the comparison needs, and if there is still no parent, it builds.
 
-**If there is still no parent, it builds.** Failing safe costs an unnecessary
-build; failing the other way silently skips a deployment you wanted.
+**Vercel runs this through `/bin/sh -c` as a single line.** A multi-line
+`if … then … fi` pasted into the settings box collapses and fails with
+`syntax error near unexpected token 'then'`. Use `||` and `;` as above, or the
+script.
 
 Vercel's contract is inverted from intuition: **exit 0 skips the build, exit 1
 continues it.** `git diff --quiet` exits 0 when nothing changed and 1 when
@@ -292,7 +298,8 @@ is unset or lacks *Contents: read and write* on the platform repo.
 | `no pg_hba.conf entry` / SSL errors | Vercel Postgres and Neon require TLS | use the pooled connection string Vercel gives you, unmodified |
 | Add-tenant says "recorded but not dispatched" | `GITHUB_DISPATCH_TOKEN` unset | expected locally; add it in production |
 | Rebuilds on unrelated pushes | no Ignored Build Step | add the path filter (Step 2) |
-| Build log: `fatal: bad revision 'HEAD^'` | Ignored Build Step run against Vercel's shallow clone | use the guarded form in Step 2, which deepens first |
+| Build log: `fatal: bad revision 'HEAD^'` | Ignored Build Step run against Vercel's shallow clone | use the script or the one-liner in Step 2, which deepen first |
+| Build log: `syntax error near unexpected token 'then'` | a multi-line if/then in the Ignored Build Step; Vercel runs it as one line | use `scripts/vercel-ignore-build.sh`, or the single-line form |
 | No deployment at all after adding the filter | the head commit did not touch the watched paths | expected — push a change under `apps/control-plane`, or redeploy from the dashboard |
 
 ---
