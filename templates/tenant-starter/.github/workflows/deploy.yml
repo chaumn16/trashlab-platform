@@ -42,8 +42,18 @@ jobs:
       # Forward-only, runs before the new build takes traffic. Core migrations
       # are expand/contract so a rollback to the previous build stays compatible
       # with the migrated schema.
+      #
+      # Skipped while DATABASE_URL is unset: the sample runs on an in-memory
+      # store and deploys without a database. The `migrate` bin ships with the
+      # Postgres implementation — see packages/core/src/db/store.ts.
       - name: Migrate tenant database
-        run: npx @trashlab/core migrate --database "$DATABASE_URL"
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL unset — skipping migrations."
+            echo "The sample runs on an in-memory store and deploys without a database."
+            exit 0
+          fi
+          npx @trashlab/core migrate --database "$DATABASE_URL"
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 

@@ -6,7 +6,7 @@ One versioned core package (`@trashlab/core`), one thin repo per tenant that
 imports it, one Vercel project and one Postgres database per tenant, and a
 control plane that provisions and rolls out across the fleet.
 
-📐 **[Architecture & diagrams](docs/ARCHITECTURE.md)** · 🚀 **[Deploy runbook](docs/DEPLOY.md)** · 🔄 **[Fleet rollouts](docs/RUNBOOK-rollout.md)**
+📐 **[Architecture & diagrams](docs/ARCHITECTURE.md)** · ▲ **[Deploy to Vercel](docs/VERCEL.md)** · 🚀 **[Deploy runbook](docs/DEPLOY.md)** · 🔄 **[Fleet rollouts](docs/RUNBOOK-rollout.md)**
 
 ---
 
@@ -22,7 +22,7 @@ templates/tenant-starter/    what `platform tenant add` stamps out
 tenants/acme/                in-repo demo tenant (see note below)
 tenants/globex/              in-repo demo tenant with custom business logic
 registry/tenants.json        fleet source of truth
-docs/                        architecture, deploy, rollout runbooks
+docs/                        architecture, Vercel setup, deploy, rollout runbooks
 ```
 
 > **On `tenants/` being in this repo.** In production every tenant is its **own
@@ -98,6 +98,15 @@ conformance suite names the exact rule you broke.
 
 ## Production setup
 
+> **Deploying for the first time?** Start with **[docs/VERCEL.md](docs/VERCEL.md)** —
+> step-by-step Vercel setup for a single tenant: link the project, set env vars,
+> deploy, wire up domains and CI. Do it by hand once; `platform tenant add`
+> automates exactly those steps, and you can't debug the automation without
+> having done it yourself.
+>
+> The sample deploys with **no database** — the store is in-memory — so you can
+> get a tenant live on Vercel before any Postgres exists.
+
 ### One-time platform bootstrap
 
 **1. Publish core to a private registry.**
@@ -133,6 +142,9 @@ export GITHUB_TOKEN=...      # repo creation + branch protection
 > explicitly.
 
 ### Add a tenant
+
+Once a project has been stood up by hand at least once
+([docs/VERCEL.md](docs/VERCEL.md)), this replaces all of it:
 
 ```bash
 platform tenant add northwind --name="Northwind Disposal" --plan=growth --apply

@@ -5,6 +5,11 @@ its own Postgres database, running a pinned version of `@trashlab/core`.
 
 There are four procedures. Only the first involves a human decision.
 
+> **First time on Vercel?** This document assumes the platform is already
+> bootstrapped. For the hands-on setup of a single tenant — `vercel link`, env
+> vars, the first deploy, domains, CI wiring, and troubleshooting — see
+> **[VERCEL.md](VERCEL.md)**.
+
 ---
 
 ## 1. Add a new tenant
@@ -144,7 +149,9 @@ Repo variables: `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `CONTROL_PLANE_URL`.
 
 ## Vercel capacity
 
-Three limits to settle with Vercel before the fleet passes ~400 tenants:
+See [VERCEL.md §7](VERCEL.md#7-capacity-limits-to-settle-early) for the same list
+with the provisioning details. In short, three limits to settle before the fleet
+passes ~400 tenants:
 
 1. **Projects per team.** 2,000 needs an Enterprise agreement.
 2. **Build concurrency.** This is the real constraint. A fleet-wide core bump is
