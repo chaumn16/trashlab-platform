@@ -108,15 +108,20 @@ Set **Project Settings → Git → Ignored Build Step** to a path filter, per te
 project:
 
 ```
-sh scripts/vercel-ignore-build.sh tenants/acme packages/core
+sh "$(git rev-parse --show-toplevel)/scripts/vercel-ignore-build.sh" tenants/acme packages/core
 ```
 
 Or, pasted directly — **it must be one line**, because Vercel runs the Ignored
 Build Step through `/bin/sh -c`:
 
 ```
-git fetch --deepen=1 --quiet 2>/dev/null || true; git rev-parse --verify --quiet HEAD^ >/dev/null || exit 1; git diff --quiet HEAD^ HEAD -- tenants/acme packages/core
+cd "$(git rev-parse --show-toplevel)" || exit 1; git fetch --deepen=1 --quiet 2>/dev/null || true; git rev-parse --verify --quiet HEAD^ >/dev/null || exit 1; git diff --quiet HEAD^ HEAD -- tenants/acme packages/core
 ```
+
+Both anchor to the repo root on purpose: **Vercel runs this from the project's
+Root Directory**, and git pathspecs are cwd-relative, so a bare
+`git diff -- tenants/acme` executed inside `tenants/acme` matches nothing and
+skips every deployment silently.
 
 Vercel's contract: **exit 0 skips the build, exit 1 continues it.** `git diff
 --quiet` exits 0 when nothing changed and 1 when something did — which is exactly
@@ -436,6 +441,8 @@ platform tenant customize acme --apply
 | Every tenant rebuilds on any push | **Path B** with no path filter | set Ignored Build Step (Path B) |
 | `fatal: bad revision 'HEAD^'` in the build log | Ignored Build Step on Vercel's shallow clone | use the script or single-line form (Path B) |
 | `syntax error near unexpected token 'then'` | multi-line if/then in the Ignored Build Step | Vercel runs it as one line — use the script or the `;`-separated form |
+| `No such file or directory` for the script | the step runs from the Root Directory | invoke via `"$(git rev-parse --show-toplevel)/scripts/…"` |
+| Deployments silently stopped | cwd-relative pathspec matches nothing from inside the Root Directory | anchor to the repo root as shown |
 | Tenant deploys but shows another tenant's branding | Root Directory points at the wrong `tenants/<slug>` | fix Root Directory, redeploy |
 | Build fails on `.ts` imports in tests | Node < 22.6 | Project Settings → Node.js Version → 22.x |
 | Deploy succeeds, site 500s | usually a missing env var, not a code bug | `vercel logs <url>` |

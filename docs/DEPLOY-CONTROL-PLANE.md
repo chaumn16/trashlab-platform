@@ -95,20 +95,28 @@ deploying this app.
 With Vercel's Git integration, **any** push triggers a build — including README
 edits. Set **Project Settings → Git → Ignored Build Step**.
 
-**Use the committed script** — it is version-controlled, testable, and avoids the
-one-line shell problem below:
+**Use the committed script:**
 
 ```
-sh scripts/vercel-ignore-build.sh apps/control-plane registry
+sh "$(git rev-parse --show-toplevel)/scripts/vercel-ignore-build.sh" apps/control-plane registry
 ```
 
 If you would rather paste the logic directly, it **must be a single line**:
 
 ```
-git fetch --deepen=1 --quiet 2>/dev/null || true; git rev-parse --verify --quiet HEAD^ >/dev/null || exit 1; git diff --quiet HEAD^ HEAD -- apps/control-plane registry
+cd "$(git rev-parse --show-toplevel)" || exit 1; git fetch --deepen=1 --quiet 2>/dev/null || true; git rev-parse --verify --quiet HEAD^ >/dev/null || exit 1; git diff --quiet HEAD^ HEAD -- apps/control-plane registry
 ```
 
-Two traps, both of which produce a failed build rather than a skipped one:
+Three traps. The first is the dangerous one — it fails *silently*:
+
+**Vercel runs this from the project's Root Directory, not the repo root.** Git
+pathspecs are cwd-relative, so `git diff -- apps/control-plane` executed *inside*
+`apps/control-plane` matches nothing, concludes "no changes", and **skips every
+deployment forever** — with no error to explain it. Hence the
+`$(git rev-parse --show-toplevel)`: both forms above anchor themselves to the
+repo root, and the paths you pass are always repo-relative. A bare
+`scripts/vercel-ignore-build.sh` fails with `No such file or directory` for the
+same reason.
 
 **Vercel clones shallow (depth 1), so `HEAD^` usually does not exist.** A bare
 `git diff --quiet HEAD^ HEAD` fails with `fatal: bad revision 'HEAD^'` and exits
@@ -300,6 +308,8 @@ is unset or lacks *Contents: read and write* on the platform repo.
 | Rebuilds on unrelated pushes | no Ignored Build Step | add the path filter (Step 2) |
 | Build log: `fatal: bad revision 'HEAD^'` | Ignored Build Step run against Vercel's shallow clone | use the script or the one-liner in Step 2, which deepen first |
 | Build log: `syntax error near unexpected token 'then'` | a multi-line if/then in the Ignored Build Step; Vercel runs it as one line | use `scripts/vercel-ignore-build.sh`, or the single-line form |
+| Build log: `scripts/vercel-ignore-build.sh: No such file or directory` | the step runs from the Root Directory, not the repo root | invoke via `"$(git rev-parse --show-toplevel)/scripts/…"` (Step 2) |
+| Builds stopped happening entirely, no error | cwd-relative pathspec matching nothing, so the filter always says "no changes" | same fix — anchor to the repo root |
 | No deployment at all after adding the filter | the head commit did not touch the watched paths | expected — push a change under `apps/control-plane`, or redeploy from the dashboard |
 
 ---
