@@ -49,9 +49,10 @@ export function NewTenantForm() {
         hint="Leave blank to derive it from the company name. Becomes their URL, repo, and Vercel project — it cannot be changed later."
         error={err("slug")}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ color: "#667085", fontSize: 13, whiteSpace: "nowrap" }}>tenant-</span>
           <input name="slug" defaultValue={state.values?.slug} placeholder="northwind" style={{ ...input, flex: 1 }} />
-          <span style={{ color: "#667085", fontSize: 13, whiteSpace: "nowrap" }}>.trashlab.app</span>
+          <span style={{ color: "#667085", fontSize: 13, whiteSpace: "nowrap" }}>.vercel.app</span>
         </div>
       </Field>
 

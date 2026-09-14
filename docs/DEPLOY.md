@@ -54,7 +54,7 @@ For provisioning on "deal won" straight from a CRM. Shares the console's
 validation, so the two cannot drift:
 
 ```bash
-curl -X POST https://control.trashlab.app/api/tenants \
+curl -X POST https://trashlab-control-plane.vercel.app/api/tenants \
   -H "Authorization: Bearer $CONTROL_PLANE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"displayName":"Northwind Disposal","plan":"growth","region":"iad1"}'
@@ -68,7 +68,7 @@ Seven automated steps, ~4 minutes end to end:
 | 2 | Create GitHub repo, protect `main` | CODEOWNERS + required checks live |
 | 3 | Provision Postgres | dedicated DB, tenant's region |
 | 4 | Create Vercel project | linked to the repo, `DATABASE_URL` injected |
-| 5 | Attach domain | `northwind.trashlab.app`, TLS issued |
+| 5 | Attach domain | `tenant-northwind.vercel.app`, TLS issued |
 | 6 | Migrate + deploy | core `stable`, smoke-tested |
 | 7 | Register | tenant appears in `platform fleet status` |
 
@@ -83,7 +83,7 @@ destructive path needs both an explicit flag and a token they don't hold.
 
 ```bash
 platform fleet status
-curl -sI https://northwind.trashlab.app | head -1    # expect 200
+curl -sI https://tenant-northwind.vercel.app | head -1    # expect 200
 ```
 
 ---

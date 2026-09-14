@@ -105,7 +105,7 @@ jobs:
             echo "| | |"
             echo "|---|---|"
             echo "| Slug | \`${{ steps.input.outputs.slug }}\` |"
-            echo "| URL | https://${{ steps.input.outputs.slug }}.trashlab.app |"
+            echo "| URL | https://tenant-${{ steps.input.outputs.slug }}.vercel.app |"
             echo "| Repo | \`trashlab/tenant-${{ steps.input.outputs.slug }}\` |"
             echo "| Plan | ${{ steps.input.outputs.plan }} |"
             echo "| Region | ${{ steps.input.outputs.region }} |"

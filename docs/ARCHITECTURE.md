@@ -46,8 +46,8 @@ flowchart TB
 
     subgraph RUNTIME["Runtime — dedicated per tenant"]
         direction LR
-        V1["Vercel project<br/>acme.trashlab.app"]
-        V2["Vercel project<br/>globex.trashlab.app"]
+        V1["Vercel project<br/>tenant-acme.vercel.app"]
+        V2["Vercel project<br/>tenant-globex.vercel.app"]
         V3["Vercel project<br/>…"]
     end
 

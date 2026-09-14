@@ -14,7 +14,7 @@ Three deployable units, and only one is a web app:
 | Unit | What it is | How it ships | Where it runs |
 |---|---|---|---|
 | `@trashlab/core` | built **tarball** | GitHub Release → vendored into each tenant repo | inside each tenant's build |
-| `@trashlab/control-plane` | Next.js **service** | Vercel project | `control.trashlab.app` |
+| `@trashlab/control-plane` | Next.js **service** | Vercel project | `trashlab-control-plane.vercel.app` |
 | `@trashlab/cli` | **CLI** | run from a clone, or `npm i -g ./packages/cli` | engineer laptops + CI |
 
 Core is never "deployed" anywhere, and never published to a registry. It is
@@ -163,7 +163,7 @@ Every tenant repo needs these, set once at provisioning by
 `platform tenant add`:
 
 ```bash
-gh variable set CONTROL_PLANE_URL --body "https://control.trashlab.app" --repo trashlab/tenant-globex
+gh variable set CONTROL_PLANE_URL --body "https://trashlab-control-plane.vercel.app" --repo trashlab/tenant-globex
 gh secret   set CONTROL_PLANE_TOKEN --body "$T"                        --repo trashlab/tenant-globex
 ```
 
@@ -192,7 +192,7 @@ Operators need:
 export VERCEL_TOKEN=...        # project, domain, deployment scope
 export VERCEL_TEAM_ID=...
 export GITHUB_TOKEN=...        # repo creation + branch protection
-export CONTROL_PLANE_URL=https://control.trashlab.app
+export CONTROL_PLANE_URL=https://trashlab-control-plane.vercel.app
 export CONTROL_PLANE_TOKEN=...
 ```
 

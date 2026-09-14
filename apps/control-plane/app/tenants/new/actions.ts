@@ -46,7 +46,7 @@ export async function createTenant(_prev: FormState, formData: FormData): Promis
     status: record.status === "dispatched" ? "dispatched" : "queued",
     message:
       record.status === "dispatched"
-        ? `It will be live at ${slug}.trashlab.app in about four minutes.`
+        ? `It will be live at tenant-${slug}.vercel.app in about four minutes.`
         : record.detail ?? "Recorded, but no provisioning workflow was started.",
   };
 }

@@ -85,7 +85,7 @@ async function tenantAdd([slug]) {
     channel: "stable",
     coreVersion,
     vercelProject: `tenant-${slug}`,
-    domain: `${slug}.trashlab.app`,
+    domain: `tenant-${slug}.vercel.app`,   // matches the Vercel project name
     database: `tenant-${slug}`,
     region,
     repo: `trashlab/tenant-${slug}`,

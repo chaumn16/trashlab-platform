@@ -320,7 +320,7 @@ Shared infrastructure you need once:
 | Resource | Purpose |
 |---|---|
 | Vercel team (Enterprise) | 2,000 projects needs an Enterprise agreement |
-| Wildcard DNS `*.trashlab.app` | per-tenant subdomains |
+| A domain you control (optional) | only if you want vanity hostnames; each Vercel project already gets `<project>.vercel.app` free |
 | GitHub org + `platform-team` | CODEOWNERS reviews, repo creation |
 | Control-plane deployment | tenant registry, CI/deploy callbacks |
 
@@ -340,7 +340,7 @@ a tenant live before any Postgres exists.
 export VERCEL_TOKEN=...      # project + domain + deployment scope
 export VERCEL_TEAM_ID=...
 export GITHUB_TOKEN=...      # repo creation + branch protection
-export CONTROL_PLANE_URL=https://control.trashlab.app
+export CONTROL_PLANE_URL=https://trashlab-control-plane.vercel.app
 export CONTROL_PLANE_TOKEN=...
 ```
 
@@ -369,7 +369,7 @@ not engineering:
 2. Create GitHub repo, protect `main` (CODEOWNERS + required checks)
 3. Provision dedicated Postgres
 4. Create Vercel project, inject `DATABASE_URL`
-5. Attach `northwind.trashlab.app`, issue TLS
+5. Attach `tenant-northwind.vercel.app`, issue TLS
 6. Migrate + deploy core `stable`, smoke test
 7. Register in the fleet
 
@@ -377,7 +377,7 @@ Verify:
 
 ```bash
 platform fleet status
-curl -sI https://northwind.trashlab.app | head -1   # expect 200
+curl -sI https://tenant-northwind.vercel.app | head -1   # expect 200
 ```
 
 ### Deploy and roll back

@@ -94,7 +94,7 @@ export { PLANS, REGIONS } from "./plans";
 
 /**
  * Subdomains core and the platform reserve. A tenant slug becomes
- * `<slug>.trashlab.app`, the Vercel project name, and the repo name, so a
+ * `tenant-<slug>.vercel.app`, the Vercel project name, and the repo name, so a
  * collision here is expensive to unwind later.
  */
 const RESERVED = new Set([

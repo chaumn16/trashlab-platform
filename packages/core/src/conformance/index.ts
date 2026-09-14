@@ -252,7 +252,7 @@ export function conformanceTests(
       const lines = report.failures.map((f) => `  ✗ ${f.check}: ${f.detail}`).join("\n");
       throw new Error(
         `${report.failures.length} of ${report.checks} conformance checks failed:\n${lines}\n\n` +
-          `See https://docs.trashlab.internal/extend for the contract.`
+          `See https://github.com/chaumn16/trashlab-platform/blob/main/docs/extend for the contract.`
       );
     }
   });

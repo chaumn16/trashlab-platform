@@ -183,7 +183,7 @@ validated and listed, but nothing is dispatched.
 
 ```bash
 vercel --prod
-vercel domains add control.trashlab.app
+vercel domains add trashlab-control-plane.vercel.app
 ```
 
 ---
@@ -194,7 +194,7 @@ Run all five. Each catches a different half-configured state, and the last one i
 the only one that proves the database is actually wired up.
 
 ```bash
-CP=https://control.trashlab.app
+CP=https://trashlab-control-plane.vercel.app
 T=<the token from Step 3>
 ```
 
@@ -257,7 +257,7 @@ Do this before sharing the URL with anyone, including sales.
 Each tenant repo needs these; `platform tenant add` sets them at provisioning:
 
 ```bash
-gh variable set CONTROL_PLANE_URL   --body "https://control.trashlab.app" --repo trashlab/tenant-globex
+gh variable set CONTROL_PLANE_URL   --body "https://trashlab-control-plane.vercel.app" --repo trashlab/tenant-globex
 gh secret   set CONTROL_PLANE_TOKEN --body "$T"                           --repo trashlab/tenant-globex
 ```
 

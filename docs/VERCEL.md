@@ -295,7 +295,7 @@ gh secret set DATABASE_URL
 gh secret set CONTROL_PLANE_TOKEN
 gh variable set VERCEL_ORG_ID       --body "team_xxxxxxxx"
 gh variable set VERCEL_PROJECT_ID   --body "prj_xxxxxxxx"
-gh variable set CONTROL_PLANE_URL   --body "https://control.trashlab.internal"
+gh variable set CONTROL_PLANE_URL   --body "https://trashlab-control-plane.vercel.app"
 ```
 
 Choose **B** for a real fleet: the smoke test and auto-rollback in that workflow
@@ -308,17 +308,24 @@ are the things that let you deploy 2,000 tenants without watching any of them.
 Per-tenant subdomain:
 
 ```bash
-vercel domains add globex.trashlab.app
+vercel domains add tenant-globex.vercel.app
 ```
 
 Or Project Settings → Domains. TLS is issued automatically.
 
-For a fleet, point a wildcard at Vercel once and every future tenant's subdomain
-resolves without a DNS change:
+**You do not need a domain at all.** Every Vercel project is served at
+`<project>.vercel.app` — `tenant-acme.vercel.app`, `tenant-globex.vercel.app` —
+with TLS, immediately, at no cost. That is enough to run the whole fleet.
+
+A domain of your own buys you two things: hostnames that read as yours, and a
+wildcard so new tenants need no DNS change:
 
 ```
 *.trashlab.app    CNAME    cname.vercel-dns.com
 ```
+
+There is no wildcard equivalent on `vercel.app`: each project gets exactly its
+own project hostname, so nothing has to be configured per tenant either way.
 
 Customer vanity domains (`waste.globex.com`) are added to that tenant's project
 individually; the customer creates the CNAME on their side.
