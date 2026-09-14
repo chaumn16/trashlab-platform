@@ -15,7 +15,7 @@ Three deployable units, and only one is a web app:
 |---|---|---|---|
 | `@trashlab/core` | built **tarball** | GitHub Release → vendored into each tenant repo | inside each tenant's build |
 | `@trashlab/control-plane` | Next.js **service** | Vercel project | `control.trashlab.app` |
-| `@trashlab/cli` | **CLI** | run from the repo or `npm i -g` | engineer laptops + CI |
+| `@trashlab/cli` | **CLI** | run from a clone, or `npm i -g ./packages/cli` | engineer laptops + CI |
 
 Core is never "deployed" anywhere, and never published to a registry. It is
 built, released as an artifact, and vendored into tenant repos. It reaches
@@ -36,9 +36,26 @@ tenant is deployed, which is what makes staged rollouts possible.
 
 ## 1. Release `@trashlab/core`
 
-**There is no package registry.** Core is built into a tarball, attached to a
-GitHub Release, and vendored into each tenant repo at `vendor/`. Nothing is
-published anywhere.
+**There is no package registry** — not npm, not GitHub Packages, not a private
+mirror. Core is built into a tarball, attached to a GitHub Release, and vendored
+into each tenant repo at `vendor/`. Nothing is published anywhere, and a tenant
+needs no credential to install it.
+
+You can check that claim rather than trust it. In any tenant repo:
+
+```bash
+ls .npmrc 2>/dev/null || echo "no .npmrc — nothing points at a registry"
+node -p "require('./package.json').dependencies['@trashlab/core']"
+#   file:vendor/trashlab-core-4.2.3.tgz
+node -p "require('./package-lock.json').packages['node_modules/@trashlab/core'].resolved"
+#   file:vendor/trashlab-core-4.2.3.tgz    ← a path, not a URL
+```
+
+**To be precise about the scope of the claim:** *core* needs no registry and no
+credential. A tenant's other dependencies — `next`, `react`, `pg` — are ordinary
+public packages and still install from npm as usual. What vendoring removes is
+the private registry, the auth token, and the ability for a core release to be
+blocked by a registry outage.
 
 ### Cut a release
 
@@ -46,7 +63,7 @@ published anywhere.
 npm run pack -w @trashlab/core      # builds, then packs → dist-releases/
 ```
 
-That produces `dist-releases/trashlab-core-<version>.tgz` (~15KB). To release it:
+That produces `dist-releases/trashlab-core-<version>.tgz` (~22KB). To release it:
 
 ```bash
 cd packages/core && npm version minor    # 4.2.3 → 4.3.0
@@ -59,9 +76,10 @@ rebuilds, runs the demo tenants' conformance suites, packs, and attaches the
 tarball to a GitHub Release. If core breaks its own extension contract, no tenant
 is ever offered the build.
 
-`files: ["dist"]` in `package.json` means only compiled output is packed —
-tenants never receive core's TypeScript sources, which is what keeps
-`src/extend/types.ts` the contract rather than the whole source tree.
+`files: ["dist", "bin"]` in `package.json` means only compiled output and the
+`trashlab-core` CLI are packed — tenants never receive core's TypeScript sources,
+which is what keeps `src/extend/types.ts` the contract rather than the whole
+source tree.
 
 ### Cutting a release deploys nothing
 
@@ -77,9 +95,13 @@ For each tenant in the batch this swaps `vendor/*.tgz`, repoints
 `package.json`, and updates `tenant.lock` in one commit — so `git log` on a
 tenant repo is an honest record of which bytes ran when.
 
-Channels (`canary` / `beta` / `stable`) live in the registry
-(`registry/tenants.json`), not in npm dist-tags. Promotion is a registry change
-plus a rollout, never a tag move.
+Channels (`canary` / `beta` / `stable`) live in the **tenant registry**
+(`registry/tenants.json`) — the fleet's own table of who runs what, not a package
+registry. Promotion is an entry change plus a rollout, never a tag move.
+
+> "Registry" means two different things in this codebase and only one of them
+> exists here. The **tenant registry** is `registry/tenants.json`. A **package
+> registry** — npm, GitHub Packages — is not used at all.
 
 ### Verify
 
@@ -252,8 +274,14 @@ tenant's deploy.
 
 ```bash
 node packages/cli/bin/platform.mjs fleet status     # from a clone
-npm i -g ./packages/cli && platform fleet status    # or install globally
+npm i -g ./packages/cli && platform fleet status    # or install from the local path
 ```
+
+Note the `./` — `npm i -g @trashlab/cli` without it would look on the public npm
+registry, where the name is unclaimed. For the same reason, tenant workflows call
+`./node_modules/.bin/trashlab-core` rather than `npx trashlab-core`: `npx` falls
+back to the public registry when a local binary is missing, which would let a
+failed install execute someone else's package with `DATABASE_URL` in scope.
 
 Operators need:
 

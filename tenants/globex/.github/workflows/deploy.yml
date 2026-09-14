@@ -53,7 +53,12 @@ jobs:
             echo "This tenant will serve core's in-memory demo data."
             exit 0
           fi
-          npx trashlab-core migrate --database "$DATABASE_URL"
+          # Invoked by PATH, deliberately — not through npx or npm exec.
+          # Both consult the public npm registry when the local binary is
+          # missing, and "trashlab-core" is an unclaimed name there. A failed
+          # install would otherwise execute a stranger's package with
+          # DATABASE_URL in scope. This form cannot reach the network.
+          ./node_modules/.bin/trashlab-core migrate --database "$DATABASE_URL"
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 

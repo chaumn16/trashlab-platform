@@ -1,6 +1,6 @@
 {
   "name": "@trashlab/core",
-  "version": "4.2.3",
+  "version": "4.3.0",
   "description": "TrashLab core platform. Pickup scheduling, job management, invoicing. Consumed as a versioned package by every tenant app.",
   "type": "module",
   "exports": {

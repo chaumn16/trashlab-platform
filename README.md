@@ -261,7 +261,7 @@ Never commit a lockfile produced while linked — it encodes a local path.
 
 **There is no package registry.** Not public, not private, none.
 
-`@trashlab/core` is built into a 15KB tarball and **committed into each tenant
+`@trashlab/core` is built into a ~22KB tarball and **committed into each tenant
 repo at `vendor/`**. `package.json` points at it with
 `"@trashlab/core": "file:vendor/trashlab-core-4.2.3.tgz"`.
 

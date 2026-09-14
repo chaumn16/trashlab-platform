@@ -167,10 +167,15 @@ re-running is safe.
 To run them by hand — first deploy, or debugging:
 
 ```bash
-export DATABASE_URL="postgres://…"        # from Vercel → Storage → .env.local
-npx trashlab-core migrate                 # creates customers, sites, jobs
-npx trashlab-core seed                    # optional: starter rows for a demo
+export DATABASE_URL="postgres://…"                  # Vercel → Storage → .env.local
+./node_modules/.bin/trashlab-core migrate           # creates customers, sites, jobs
+./node_modules/.bin/trashlab-core seed              # optional: starter rows
 ```
+
+Invoked by path rather than with `npx` on purpose. `npx` falls back to the
+**public** npm registry when a local binary is missing, and `trashlab-core` is an
+unclaimed name there — a failed install would otherwise run a stranger's package
+with your `DATABASE_URL` in scope. The deploy workflow uses the same form.
 
 Verify the schema exists:
 
@@ -416,7 +421,7 @@ platform tenant customize acme --apply
 | Build fails on `.ts` imports in tests | Node < 22.6 | Project Settings → Node.js Version → 22.x |
 | Deploy succeeds, site 500s | usually a missing env var, not a code bug | `vercel logs <url>` |
 | Every tenant shows the same fake customers | `DATABASE_URL` unset — serving core's fixtures | add it (§3) and redeploy |
-| `relation "customers" does not exist` | migrations never ran | `npx trashlab-core migrate` |
+| `relation "customers" does not exist` | migrations never ran | `./node_modules/.bin/trashlab-core migrate` |
 | `no pg_hba.conf entry` / SSL errors | Vercel Postgres and Neon require TLS | use the pooled connection string Vercel gives you, unmodified |
 | Connection limit exhausted | a pool per request instead of per instance | `lib/store.ts` caches the pool at module scope — do not move it into the request path |
 | Two deploys per merge | Git integration **and** the Actions workflow are both active | disable one (§6) |
