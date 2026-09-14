@@ -1,5 +1,9 @@
 # Runbook: rolling core across the fleet
 
+> This is the fleet-wide procedure. For a single tenant's change lifecycle, see
+> [SDLC.md](SDLC.md); §7 there covers how a tenant receives an upgrade it did not
+> ask for.
+
 ## Normal release
 
 ```bash

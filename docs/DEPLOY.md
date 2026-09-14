@@ -5,6 +5,10 @@ its own Postgres database, running a pinned version of `@trashlab/core`.
 
 There are four procedures. Only the first involves a human decision.
 
+> These are the mechanics. For the lifecycle around them — who triages a request,
+> which gates a change passes, who reviews, and how a tenant is decommissioned —
+> see **[SDLC.md](SDLC.md)**.
+
 > **First time here?** This document assumes the platform is already deployed —
 > core published, control plane live. If it isn't, start with
 > [DEPLOY-PLATFORM.md](DEPLOY-PLATFORM.md). For the hands-on setup of a single tenant — `vercel link`, env

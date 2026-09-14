@@ -6,7 +6,7 @@ One versioned core package (`@trashlab/core`), one thin repo per tenant that
 imports it, one Vercel project and one Postgres database per tenant, and a
 control plane that provisions and rolls out across the fleet.
 
-📐 **[Architecture & diagrams](docs/ARCHITECTURE.md)**
+📐 **[Architecture & diagrams](docs/ARCHITECTURE.md)** · 🔁 **[Tenant SDLC](docs/SDLC.md)** — how a change reaches a customer, and who owns each step
 🏗 **[Deploy the platform](docs/DEPLOY-PLATFORM.md)** — publish core, deploy the control plane (**start here**)
 ▲ **[Deploy a tenant to Vercel](docs/VERCEL.md)** · 🚀 **[Tenant runbook](docs/DEPLOY.md)** · 🔄 **[Fleet rollouts](docs/RUNBOOK-rollout.md)**
 
@@ -25,7 +25,7 @@ templates/tenant-starter/    what `platform tenant add` stamps out
 tenants/acme/                in-repo demo tenant (see note below)
 tenants/globex/              in-repo demo tenant with custom business logic
 registry/tenants.json        fleet source of truth
-docs/                        architecture, platform + tenant deploys, rollout runbooks
+docs/                        architecture, SDLC, platform + tenant deploys, rollout runbooks
 ```
 
 > **On `tenants/` being in this repo.** In production every tenant is its **own

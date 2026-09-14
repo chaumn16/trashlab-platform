@@ -236,6 +236,9 @@ fleet-wide breaking change.
 
 ---
 
+> The process around this — triage, gates, review, release, incident response —
+> is documented in [SDLC.md](SDLC.md).
+
 ## 6. The convergence loop
 
 The mechanism that stops 2,000 tenants becoming 2,000 codebases.
