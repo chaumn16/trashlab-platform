@@ -11,11 +11,11 @@ import { readRequests } from "../lib/provision";
  */
 export const dynamic = "force-dynamic";
 
-export default function Dashboard() {
-  const tenants = readTenants();
-  const channels = readChannels();
-  const events = readEvents();
-  const requests = readRequests();
+export default async function Dashboard() {
+  const tenants = await readTenants();
+  const channels = await readChannels();
+  const events = await readEvents();
+  const requests = await readRequests();
 
   const behind = tenants.filter((t) => semverLt(t.coreVersion, channels.stable));
   const expired = tenants.filter((t) => t.pinExpiry && new Date(t.pinExpiry) < new Date());

@@ -10,9 +10,10 @@ time, then automated for the remaining 1,999.
 Do this manually at least once. `platform tenant add` automates exactly these
 steps, and you cannot debug the automation without having done it yourself.
 
-> **The sample deploys with no database.** `packages/core/src/db/store.ts` is an
-> in-memory store, so you can deploy a tenant and see it live before any Postgres
-> exists. Skip every `DATABASE_URL` step below until you swap in the real store.
+> **You can deploy without a database to see it working**, then add Postgres.
+> Without `DATABASE_URL` a tenant serves core's seeded demo data — fine for a
+> first look, and wrong for a real customer, who would see Harborview Apartments
+> instead of their own sites. §3a adds the database.
 
 ---
 
@@ -47,7 +48,7 @@ blast radius and scopes deploy credentials to one tenant.
 Path B exists because core developers need to run a real tenant without cloning
 one, and because a tenant that hasn't been customized yet doesn't need a repo of
 its own. When it gets one, see
-[§10 Promoting a monorepo tenant](#10-promoting-a-monorepo-tenant-to-its-own-repo).
+[§10 Promoting a monorepo tenant](#11-promoting-a-monorepo-tenant-to-its-own-repo).
 
 ---
 
@@ -135,11 +136,54 @@ needs no token and cannot 401, rate-limit, or depend on a registry being up.
 
 ---
 
-## 3. Environment variables
+## 3. Give the tenant its own database
+
+**This is the step that separates a deployed demo from a working tenant.**
+Without it the app serves core's seeded fixtures — every tenant showing identical
+fake customers.
+
+In the Vercel dashboard for this project: **Storage → Create Database →
+Postgres**, named `tenant-<slug>`. Neon works the same way.
+
+**One database per tenant, never shared.** Isolation comes from the connection
+string: core's queries carry no tenant column, so there is no WHERE clause to
+forget. Pointing two tenants at one database does not "mostly work" — it merges
+their customers.
+
+Set the region to match the tenant's Vercel region. A tenant in `iad1` querying a
+database in `fra1` pays that round trip on every request.
+
+### Migrate and seed
+
+Migrations run automatically on every deploy, before the new build takes traffic
+(see `.github/workflows/deploy.yml`). They are forward-only and idempotent, so
+re-running is safe.
+
+To run them by hand — first deploy, or debugging:
+
+```bash
+export DATABASE_URL="postgres://…"        # from Vercel → Storage → .env.local
+npx trashlab-core migrate                 # creates customers, sites, jobs
+npx trashlab-core seed                    # optional: starter rows for a demo
+```
+
+Verify the schema exists:
+
+```bash
+psql "$DATABASE_URL" -c "\dt"
+# _core_migrations | customers | jobs | sites
+```
+
+Core tables are unprefixed; tenant-specific tables use `t_`, so `\dt` tells you
+at a glance which are core's and which this tenant added.
+
+---
+
+## 4. Environment variables
 
 ```bash
 vercel env add TENANT_ID production              # e.g. globex
-vercel env add DATABASE_URL production           # once the store is real
+vercel env add DATABASE_URL production           # from §3
 ```
 
 Add them to `preview` too if you want PR previews to build:
@@ -151,7 +195,7 @@ vercel env add TENANT_ID preview
 | Variable | Scope | Purpose |
 |---|---|---|
 | `TENANT_ID` | production + preview | tags logs and metrics by tenant |
-| `DATABASE_URL` | production | this tenant's Postgres — **only this tenant's** |
+| `DATABASE_URL` | production | this tenant's Postgres — **only this tenant's**. Unset ⇒ the app serves core's demo fixtures |
 
 `DATABASE_URL` is the isolation boundary. Each Vercel project holds exactly one,
 pointing at exactly one database. That is why cross-tenant leakage is
@@ -159,7 +203,7 @@ structurally impossible rather than something code review has to catch.
 
 ---
 
-## 4. Deploy
+## 5. Deploy
 
 ```bash
 vercel --prod
@@ -173,6 +217,15 @@ curl -sI https://<deployment-url> | head -1     # expect HTTP/2 200
 
 Then open `/jobs/job_1003` and confirm Globex's weight-bracket pricing
 (**$810.90**), the **Manifests** nav item, and the EPA panel on job detail.
+
+**Confirm it is reading Postgres, not fixtures.** Change a row and reload:
+
+```bash
+psql "$DATABASE_URL" -c "UPDATE customers SET name = 'Harborview Apartments LLC' WHERE id = 'cus_1'"
+```
+
+If the page still shows the old name, `DATABASE_URL` is not reaching the
+deployment and you are looking at core's in-memory demo data.
 
 ### The prebuilt path (what CI uses)
 
@@ -189,7 +242,7 @@ runs, so a failure there reproduces exactly with these three commands.
 
 ---
 
-## 5. Automatic deploys from GitHub
+## 6. Automatic deploys from GitHub
 
 Two options. Pick one — running both double-deploys every merge.
 
@@ -218,7 +271,7 @@ are the things that let you deploy 2,000 tenants without watching any of them.
 
 ---
 
-## 6. Domains
+## 7. Domains
 
 Per-tenant subdomain:
 
@@ -240,7 +293,7 @@ individually; the customer creates the CNAME on their side.
 
 ---
 
-## 7. Capacity limits to settle early
+## 8. Capacity limits to settle early
 
 Three things to confirm with Vercel **before the fleet passes ~400 tenants**:
 
@@ -255,7 +308,7 @@ Three things to confirm with Vercel **before the fleet passes ~400 tenants**:
 
 ---
 
-## 8. Rollback
+## 9. Rollback
 
 ```bash
 vercel rollback --yes                  # instant, previous production deployment
@@ -270,7 +323,7 @@ build is a rollback you cannot perform — see
 
 ---
 
-## 9. Once it works by hand, automate it
+## 10. Once it works by hand, automate it
 
 Everything above collapses into one command:
 
@@ -285,7 +338,7 @@ API call it would make without making one.
 
 ---
 
-## 10. Promoting a monorepo tenant to its own repo
+## 11. Promoting a monorepo tenant to its own repo
 
 When a Path B tenant starts carrying real custom code, give it a repo. This is
 the same procedure that produced
@@ -353,9 +406,13 @@ platform tenant customize acme --apply
 |---|---|---|
 | `Module not found: @trashlab/core` | **Path B**: Root Directory set but files outside it excluded | turn on "Include source files outside of the Root Directory" |
 | `Module not found: @trashlab/core` | **Path A**: `vendor/*.tgz` missing or `package.json` points at the wrong filename | restore the tarball, or `npm run link:core` for local work |
-| Every tenant rebuilds on any push | **Path B** with no path filter | set Ignored Build Step (§ Path B) |
+| Every tenant rebuilds on any push | **Path B** with no path filter | set Ignored Build Step (Path B) |
 | Tenant deploys but shows another tenant's branding | Root Directory points at the wrong `tenants/<slug>` | fix Root Directory, redeploy |
 | Build fails on `.ts` imports in tests | Node < 22.6 | Project Settings → Node.js Version → 22.x |
 | Deploy succeeds, site 500s | usually a missing env var, not a code bug | `vercel logs <url>` |
-| Two deploys per merge | Git integration **and** the Actions workflow are both active | disable one (§5) |
+| Every tenant shows the same fake customers | `DATABASE_URL` unset — serving core's fixtures | add it (§3) and redeploy |
+| `relation "customers" does not exist` | migrations never ran | `npx trashlab-core migrate` |
+| `no pg_hba.conf entry` / SSL errors | Vercel Postgres and Neon require TLS | use the pooled connection string Vercel gives you, unmodified |
+| Connection limit exhausted | a pool per request instead of per instance | `lib/store.ts` caches the pool at module scope — do not move it into the request path |
+| Two deploys per merge | Git integration **and** the Actions workflow are both active | disable one (§6) |
 | `vercel: command not found` in CI | the workflow installs it per-run | `npm i -g vercel@latest` before `vercel pull` |

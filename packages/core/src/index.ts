@@ -1,4 +1,13 @@
-export { CoreApp, CoreLayout } from "./app/index.js";
+/**
+ * @trashlab/core — framework-free entry point.
+ *
+ * Deliberately does NOT re-export the React/Next surface. `./app` imports
+ * next/navigation, which only a bundler can resolve; re-exporting it here made
+ * `import "@trashlab/core"` fail under plain Node — breaking the migrate CLI,
+ * scripts, and any test that touches the store.
+ *
+ * Everything exported here runs anywhere. UI lives at "@trashlab/core/app".
+ */
 export { createStore, defaultSeed } from "./db/store.js";
 export type { DataStore, SeedData } from "./db/store.js";
 export { createRuntime } from "./domain/runtime.js";

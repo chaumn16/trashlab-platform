@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "tenantId and status are required" }, { status: 400 });
   }
 
-  recordEvent({
+  await recordEvent({
     kind: "deploy",
     tenantId: body.tenantId,
     status: body.status,

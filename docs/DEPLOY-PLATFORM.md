@@ -93,8 +93,8 @@ platform fleet status                      # who is on what
 
 ## 2. Deploy the control plane
 
-A Next.js app serving the fleet dashboard and the callback API that every
-tenant's CI and deploy workflows post to.
+A Next.js app serving the fleet dashboard, the Add-tenant form sales uses, and
+the callback API every tenant's CI and deploy workflows post to.
 
 | Route | Method | Purpose |
 |---|---|---|
@@ -105,87 +105,100 @@ tenant's CI and deploy workflows post to.
 | `/api/ci-result` | POST | tenant CI reports pass/fail per PR |
 | `/api/deploy-result` | POST | tenant deploys report success + URL |
 
-### Link the project
+### 2a. Create its database — do this first
+
+The control plane has its **own** Postgres, separate from every tenant's. It
+holds data *about* tenants (registry, events, provisioning requests), never data
+*belonging to* them.
+
+In the Vercel dashboard: **Storage → Create Database → Postgres**, named
+`control-plane`. Neon works identically; any Postgres will do.
+
+Without `DATABASE_URL` the app still runs — it reads the bundled
+`registry/tenants.json` and keeps writes in memory. That is correct for local
+development and **wrong in production**: serverless instances do not share
+memory, so provisioning requests and CI events would vanish between requests.
+
+Schema and seed are automatic. On first use the app creates its tables and loads
+the bundled registry, so the dashboard is populated on the very first request
+rather than empty.
+
+### 2b. Link and configure the project
 
 ```bash
 cd apps/control-plane
 vercel link          # create a project named trashlab-control-plane
 ```
 
-### ⚠ Root Directory — the step that breaks first
-
-The control plane lives in a monorepo and imports the registry from the repo
-root (`registry/tenants.json`). In **Project Settings → General**:
+**Project Settings → General:**
 
 - **Root Directory** → `apps/control-plane`
 - **Include source files outside of the Root Directory** → **ON**
+- **Node.js Version** → 22.x
 
-With that setting off, the build fails with `Module not found:
-../../../registry/tenants.json`. This is the single most common failure when
-deploying this app.
+That second setting is not optional: the app imports `registry/tenants.json`
+from the repo root for its initial seed. With it off the build fails with
+`Module not found: ../../../registry/tenants.json`.
 
-Also set **Node.js Version → 22.x**.
-
-### Environment variables
+### 2c. Environment variables
 
 ```bash
 openssl rand -hex 32                                  # generate a real token
 vercel env add CONTROL_PLANE_TOKEN production
 vercel env add CONTROL_PLANE_TOKEN preview
-
-# Lets the Add-tenant form start the provisioning workflow
-vercel env add GITHUB_DISPATCH_TOKEN production
+vercel env add DATABASE_URL production                # from step 2a
+vercel env add GITHUB_DISPATCH_TOKEN production       # lets the form start provisioning
 vercel env add PLATFORM_REPO production               # chaumn16/trashlab-platform
 ```
 
-**`GITHUB_DISPATCH_TOKEN` is deliberately weak.** A fine-grained PAT with
+**`CONTROL_PLANE_TOKEN` fails closed.** Unset, every API route returns `503` —
+never an open endpoint. The dashboard still renders, which is the most common way
+to get a half-configured deployment that looks fine.
+
+**`GITHUB_DISPATCH_TOKEN` is deliberately weak**: a fine-grained PAT with
 *Contents: read and write* on the platform repo only. It triggers a workflow; it
 does not provision. `VERCEL_TOKEN` and the fleet GitHub token live in GitHub
-Actions secrets and never touch the web app — see
-[§2b](#2b-the-provisioning-workflow) for why.
+Actions secrets and never touch the web app — see [§2e](#2e-the-provisioning-workflow).
 
-Leave it unset and the console still works: requests are validated and listed,
-but nothing is dispatched.
-
-See [`apps/control-plane/.env.example`](../apps/control-plane/.env.example) for
-the full list. Locally, copy it to `.env.local`.
-
-**The token fails closed.** If `CONTROL_PLANE_TOKEN` is unset, every API route
-returns `503`, never an open endpoint. An unconfigured control plane refuses
-writes rather than accepting anonymous ones.
-
-### Deploy
+### 2d. Deploy and verify
 
 ```bash
 vercel --prod
 vercel domains add control.trashlab.app
 ```
 
-### Verify
+Run all five checks. Each one catches a different half-configured state:
 
 ```bash
 CP=https://control.trashlab.app
 T=<the token you generated>
 
-curl -s -o /dev/null -w "dashboard: %{http_code}\n" $CP/                        # 200
-curl -s -o /dev/null -w "no auth:   %{http_code}\n" $CP/api/tenants             # 401
-curl -s -H "Authorization: Bearer $T" $CP/api/tenants | head -c 200             # the fleet
+# 1. dashboard renders
+curl -s -o /dev/null -w "dashboard: %{http_code}\n" $CP/
 
+# 2. auth is enforced (401, NOT 503 — 503 means DATABASE_URL/token missing)
+curl -s -o /dev/null -w "no auth:   %{http_code}\n" $CP/api/tenants
+
+# 3. the fleet reads back from Postgres, not the bundled JSON
+curl -s -H "Authorization: Bearer $T" $CP/api/tenants | head -c 200
+
+# 4. a CI callback persists
 curl -s -X POST $CP/api/ci-result \
   -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
-  -d '{"tenantId":"globex","sha":"abc1234","status":"success"}'                 # {"ok":true}
+  -d '{"tenantId":"globex","sha":"abc1234","status":"success"}'
+
+# 5. it survived — reload the dashboard and the event is listed.
+#    If it is not, DATABASE_URL is unset and you are on the in-memory path.
 ```
 
-Open the dashboard — you should see the fleet table, the drift panel, and the
-event you just posted.
+Check 5 is the one that matters. Everything else can pass on a control plane that
+silently forgets every write.
 
-### 2b. The provisioning workflow
+### 2e. The provisioning workflow
 
 The console does **not** provision. It validates the request and dispatches
 [`.github/workflows/provision-tenant.yml`](../.github/workflows/provision-tenant.yml),
 which runs `platform tenant add --apply`.
-
-Three reasons, and they are worth understanding before you "simplify" it:
 
 1. **Provisioning takes minutes** — repo, database, project, domain, deploy.
    Serverless functions time out; a workflow does not.
@@ -195,19 +208,16 @@ Three reasons, and they are worth understanding before you "simplify" it:
 3. **Retry and audit for free.** "Who onboarded this customer, and when" is
    answerable from the Actions history.
 
-Set these once on the platform repo:
-
 ```bash
 gh secret   set VERCEL_TOKEN        --repo chaumn16/trashlab-platform
 gh secret   set FLEET_GITHUB_TOKEN  --repo chaumn16/trashlab-platform   # repo + workflow scope
 gh variable set VERCEL_TEAM_ID      --repo chaumn16/trashlab-platform --body "team_xxxx"
 ```
 
-The workflow runs `tenant add` **as a dry run first**, then with `--apply`. A bad
-slug or a duplicate fails before anything is created — provisioning is far
-cheaper to prevent than to unwind.
+The workflow runs `tenant add` as a dry run **first**, then with `--apply`. A bad
+slug or a duplicate fails before anything is created.
 
-### 2c. Put the console behind SSO
+### 2f. Put the console behind SSO
 
 `/tenants/new` creates customers and `/` lists every one of them. Neither page is
 token-protected — they are human UI, and a bearer token in a browser is not auth.

@@ -1,4 +1,4 @@
-import { globexStore } from "../../extensions/demo-data.ts";
+import { getStore } from "../../lib/store";
 import tenant from "../../tenant.config";
 
 /**
@@ -10,7 +10,7 @@ import tenant from "../../tenant.config";
  * reserved paths are rejected by the conformance suite.
  */
 export default async function ManifestsPage() {
-  const db = globexStore();
+  const db = await getStore();
   const jobs = (await db.listJobs()).filter((j) => j.serviceType === "rolloff");
 
   return (

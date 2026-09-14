@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { createTenant, type FormState } from "./actions";
-import { PLANS, REGIONS } from "../../../lib/provision";
+import { PLANS, REGIONS } from "../../../lib/plans";
 
 /**
  * The screen sales uses to onboard a customer.

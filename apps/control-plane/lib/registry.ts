@@ -1,20 +1,20 @@
 import registryData from "../../../registry/tenants.json";
+import {
+  migrateControlPlane, seedControlPlane, readTenantsDb, readChannelsDb,
+  recordEventDb, readEventsDb, type Queryable,
+} from "./db";
 
 /**
  * The tenant registry — source of truth for the fleet.
  *
- * ┌─ SWAP POINT ───────────────────────────────────────────────────────────┐
- * │ Reads are served from the registry JSON, bundled at build time.         │
- * │                                                                         │
- * │ WRITES DO NOT PERSIST. Vercel's filesystem is read-only at runtime, so  │
- * │ the callback endpoints below record into an in-process cache that is    │
- * │ lost on every cold start and is NOT shared between serverless instances.│
- * │ That is fine for a demo and wrong for production.                        │
- * │                                                                         │
- * │ For production, replace readTenants/recordEvent with Vercel Postgres,   │
- * │ Neon, or KV. The interface and every caller stay identical. Nothing     │
- * │ else in this app needs to change.                                       │
- * └────────────────────────────────────────────────────────────────────────┘
+ * Two backends, chosen by DATABASE_URL:
+ *
+ *   set    → Postgres. Durable, shared across serverless instances. Production.
+ *   unset  → the bundled registry JSON for reads, an in-process array for
+ *            writes. Local development, no database required.
+ *
+ * The in-memory path is not a half-finished version of the Postgres one — it is
+ * how the app runs on a laptop with nothing installed. Both are real.
  */
 
 export interface Tenant {
@@ -56,6 +56,36 @@ export interface FleetEvent {
 const data = registryData as unknown as { coreChannels: Channels; tenants: Tenant[] };
 
 /**
+ * Lazily connect, and migrate + seed on first use.
+ *
+ * Seeding from the bundled JSON means a fresh control-plane database comes up
+ * already knowing the fleet, so the first deploy is not an empty dashboard.
+ */
+let pooling: Promise<Queryable | null> | null = null;
+
+function db(): Promise<Queryable | null> {
+  if (pooling) return pooling;
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    pooling = Promise.resolve(null);
+    return pooling;
+  }
+  pooling = (async () => {
+    const { Pool } = await import("pg");
+    const isLocal = /@(localhost|127\.0\.0\.1)/.test(url);
+    const pool = new Pool({
+      connectionString: url,
+      ssl: isLocal ? false : { rejectUnauthorized: false },
+      max: 3,
+    }) as unknown as Queryable;
+    await migrateControlPlane(pool);
+    await seedControlPlane(pool, data);
+    return pool;
+  })();
+  return pooling;
+}
+
+/**
  * Ephemeral. See SWAP POINT above.
  *
  * Stashed on globalThis because Next re-evaluates modules on hot reload and
@@ -68,21 +98,29 @@ const data = registryData as unknown as { coreChannels: Channels; tenants: Tenan
 const globalStore = globalThis as unknown as { __events?: FleetEvent[] };
 const events: FleetEvent[] = (globalStore.__events ??= []);
 
-export function readTenants(): Tenant[] {
-  return data.tenants;
+export async function readTenants(): Promise<Tenant[]> {
+  const conn = await db();
+  return conn ? readTenantsDb(conn) : data.tenants;
 }
 
-export function readChannels(): Channels {
-  return data.coreChannels;
+export async function readChannels(): Promise<Channels> {
+  const conn = await db();
+  return conn ? readChannelsDb(conn) : data.coreChannels;
 }
 
-export function recordEvent(e: FleetEvent): void {
+export async function recordEvent(e: FleetEvent): Promise<void> {
+  const conn = await db();
+  if (conn) {
+    await recordEventDb(conn, e);
+    return;
+  }
   events.unshift(e);
   events.length = Math.min(events.length, 50);
 }
 
-export function readEvents(): FleetEvent[] {
-  return events;
+export async function readEvents(): Promise<FleetEvent[]> {
+  const conn = await db();
+  return conn ? readEventsDb(conn) : events;
 }
 
 /** Semver compare, enough for release ordering (handles -rc.N prereleases). */

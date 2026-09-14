@@ -7,10 +7,12 @@
     ".": "./dist/index.js",
     "./extend": "./dist/extend/index.js",
     "./app": "./dist/app/index.js",
-    "./conformance": "./dist/conformance/index.js"
+    "./conformance": "./dist/conformance/index.js",
+    "./db": "./dist/db/postgres.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "bin"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -19,7 +21,8 @@
   },
   "peerDependencies": {
     "react": ">=19",
-    "next": ">=15"
+    "next": ">=15",
+    "pg": ">=8"
   },
   "devDependencies": {
     "typescript": "^5.6.0",
@@ -27,5 +30,13 @@
     "@types/node": "^22.0.0",
     "next": "^15.0.0",
     "react": "^19.0.0"
+  },
+  "bin": {
+    "trashlab-core": "./bin/trashlab-core.mjs"
+  },
+  "peerDependenciesMeta": {
+    "pg": {
+      "optional": true
+    }
   }
 }

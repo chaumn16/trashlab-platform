@@ -20,3 +20,16 @@ for that reason.
 
 Working on core itself? `npm run link:core` points the dependency at a local
 checkout of the platform repo; `npm run unlink:core` restores this tarball.
+
+**Gotcha when replacing the tarball by hand.** npm resolves a `file:` dependency
+by path and verifies it against the integrity hash in `package-lock.json`, so
+dropping in new bytes under the *same filename* does not reinstall — you get the
+old code with no warning, and deleting `node_modules/@trashlab/core` alone is not
+enough, because the stale hash is still in the lockfile. The reliable fix is to
+discard both:
+
+    rm -rf node_modules package-lock.json && npm install
+
+This never bites in production: the fleet controller changes the version, so the
+filename changes with it and the lockfile entry changes with that. It only
+affects hand-editing during core development.

@@ -31,7 +31,7 @@ export async function createTenant(_prev: FormState, formData: FormData): Promis
   const slug = rawSlug || suggestSlug(displayName);
   const values = { displayName, slug, plan, region };
 
-  const errors = validate({ slug, displayName, plan, region });
+  const errors = await validate({ slug, displayName, plan, region });
   if (errors.length) return { ok: false, errors, values };
 
   const record = await submit({ ...values, requestedBy: "console" });

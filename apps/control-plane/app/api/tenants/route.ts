@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   if (!auth.ok) {
     return Response.json({ error: auth.error }, { status: auth.status });
   }
-  return Response.json({ coreChannels: readChannels(), tenants: readTenants() });
+  return Response.json({ coreChannels: await readChannels(), tenants: await readTenants() });
 }
 
 /**
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
   const plan = body.plan ?? "growth";
   const region = body.region ?? "iad1";
 
-  const errors = validate({ slug, displayName, plan, region });
+  const errors = await validate({ slug, displayName, plan, region });
   if (errors.length) {
     return Response.json({ error: "validation failed", errors }, { status: 422 });
   }

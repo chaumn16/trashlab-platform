@@ -1,6 +1,6 @@
 import { CoreApp } from "@trashlab/core/app";
 import tenant from "../../tenant.config";
-import { globexStore } from "../../extensions/demo-data.ts";
+import { getStore } from "../../lib/store";
 
 /**
  * Catch-all mount for core routes. Identical to the template except for the
@@ -9,5 +9,5 @@ import { globexStore } from "../../extensions/demo-data.ts";
  */
 export default async function Page({ params }: { params: Promise<{ slug?: string[] }> }) {
   const { slug } = await params;
-  return <CoreApp config={tenant} slug={slug ?? []} store={globexStore()} />;
+  return <CoreApp config={tenant} slug={slug ?? []} store={await getStore()} />;
 }

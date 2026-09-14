@@ -11,6 +11,7 @@ import tseslint from "typescript-eslint";
  *   @trashlab/core             CORE_VERSION, createStore
  *   @trashlab/core/extend      business logic: hooks, slots, types, helpers
  *   @trashlab/core/app         the mount: CoreApp, CoreLayout
+ *   @trashlab/core/db          the Postgres store + migrate (needs `pg`)
  *   @trashlab/core/conformance the CI test harness
  *
  * Everything else — anything under /dist, /src, or any other subpath — is
@@ -35,10 +36,11 @@ export default [
                 "!@trashlab/core/extend",
                 "!@trashlab/core/app",
                 "!@trashlab/core/conformance",
+                "!@trashlab/core/db",
               ],
               message:
                 "That's a core internal, not a public entry point. Tenant code may import " +
-                "'@trashlab/core', '/extend', '/app', or '/conformance' only — everything else " +
+                "'@trashlab/core', '/extend', '/app', '/db', or '/conformance' only — everything else " +
                 "changes without notice and will break on the next core bump. If you need " +
                 "something that isn't exported from one of those, that's a platform request: " +
                 "open an issue rather than reaching inside.",

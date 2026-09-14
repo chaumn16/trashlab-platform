@@ -188,7 +188,7 @@ Repo variables: `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `CONTROL_PLANE_URL`.
 
 ## Vercel capacity
 
-See [VERCEL.md §7](VERCEL.md#7-capacity-limits-to-settle-early) for the same list
+See [VERCEL.md §7](VERCEL.md#8-capacity-limits-to-settle-early) for the same list
 with the provisioning details. In short, three limits to settle before the fleet
 passes ~400 tenants:
 

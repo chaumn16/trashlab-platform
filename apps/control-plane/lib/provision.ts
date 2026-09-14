@@ -1,4 +1,6 @@
 import { readTenants } from "./registry";
+import { recordRequestDb, readRequestsDb, type Queryable } from "./db";
+import { PLANS, REGIONS } from "./plans";
 
 /**
  * Tenant provisioning requests.
@@ -37,12 +39,26 @@ export interface ProvisionRequest {
 const globalStore = globalThis as unknown as { __provisionRequests?: ProvisionRequest[] };
 const requests: ProvisionRequest[] = (globalStore.__provisionRequests ??= []);
 
-export function readRequests(): ProvisionRequest[] {
-  return requests;
+async function db(): Promise<Queryable | null> {
+  const url = process.env.DATABASE_URL;
+  if (!url) return null;
+  const { Pool } = await import("pg");
+  const isLocal = /@(localhost|127\.0\.0\.1)/.test(url);
+  return new Pool({
+    connectionString: url,
+    ssl: isLocal ? false : { rejectUnauthorized: false },
+    max: 2,
+  }) as unknown as Queryable;
 }
 
-export const PLANS = ["starter", "growth", "enterprise"] as const;
-export const REGIONS = ["iad1", "sfo1", "fra1", "syd1"] as const;
+export async function readRequests(): Promise<ProvisionRequest[]> {
+  const conn = await db();
+  return conn ? readRequestsDb(conn) : requests;
+}
+
+// Re-exported for server-side callers. Client components must import these
+// from ./plans directly — see the note there.
+export { PLANS, REGIONS } from "./plans";
 
 /**
  * Subdomains core and the platform reserve. A tenant slug becomes
@@ -61,12 +77,12 @@ export interface ValidationError {
   message: string;
 }
 
-export function validate(input: {
+export async function validate(input: {
   slug: string;
   displayName: string;
   plan: string;
   region: string;
-}): ValidationError[] {
+}): Promise<ValidationError[]> {
   const errors: ValidationError[] = [];
 
   if (!input.displayName?.trim()) {
@@ -81,7 +97,7 @@ export function validate(input: {
     });
   } else if (RESERVED.has(input.slug)) {
     errors.push({ field: "slug", message: `"${input.slug}" is reserved by the platform.` });
-  } else if (readTenants().some((t) => t.id === input.slug)) {
+  } else if ((await readTenants()).some((t) => t.id === input.slug)) {
     errors.push({ field: "slug", message: `"${input.slug}" already exists in the fleet.` });
   }
 
@@ -126,7 +142,7 @@ export async function submit(input: {
 
   if (!token) {
     record.detail = "GITHUB_DISPATCH_TOKEN not configured — recorded but not dispatched.";
-    requests.unshift(record);
+    await persist(record);
     return record;
   }
 
@@ -162,7 +178,16 @@ export async function submit(input: {
     record.detail = err instanceof Error ? err.message : String(err);
   }
 
-  requests.unshift(record);
-  requests.length = Math.min(requests.length, 25);
+  await persist(record);
   return record;
+}
+
+async function persist(r: ProvisionRequest): Promise<void> {
+  const conn = await db();
+  if (conn) {
+    await recordRequestDb(conn, r);
+    return;
+  }
+  requests.unshift(r);
+  requests.length = Math.min(requests.length, 25);
 }
