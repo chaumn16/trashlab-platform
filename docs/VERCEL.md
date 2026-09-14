@@ -108,6 +108,11 @@ Set **Project Settings → Git → Ignored Build Step** to a path filter, per te
 project:
 
 ```bash
+git fetch --deepen=1 --quiet 2>/dev/null || true
+if ! git rev-parse --verify --quiet HEAD^ >/dev/null; then
+  echo "no parent commit available — building"
+  exit 1
+fi
 git diff --quiet HEAD^ HEAD -- tenants/acme packages/core
 ```
 
@@ -115,6 +120,14 @@ Vercel's contract: **exit 0 skips the build, exit 1 continues it.** `git diff
 --quiet` exits 0 when nothing changed and 1 when something did — which is exactly
 backwards from intuition and exactly right here. Include `packages/core` so a
 core change still rebuilds the tenants that consume it.
+
+The `--deepen` and the guard are not decoration: **Vercel clones shallow (depth
+1)**, so `HEAD^` usually does not exist and a bare `git diff HEAD^ HEAD` exits
+`128` with `fatal: bad revision 'HEAD^'`. If no parent can be fetched, the script
+builds — an unnecessary build is cheaper than a silently skipped deployment.
+
+> Add this **after** the first successful deployment. On a new project, a filter
+> that skips means no first deployment at all.
 
 This problem does not exist on Path A: one repo, one project, one trigger.
 
@@ -417,6 +430,7 @@ platform tenant customize acme --apply
 | `Module not found: @trashlab/core` | **Path B**: Root Directory set but files outside it excluded | turn on "Include source files outside of the Root Directory" |
 | `Module not found: @trashlab/core` | **Path A**: `vendor/*.tgz` missing or `package.json` points at the wrong filename | restore the tarball, or `npm run link:core` for local work |
 | Every tenant rebuilds on any push | **Path B** with no path filter | set Ignored Build Step (Path B) |
+| `fatal: bad revision 'HEAD^'` in the build log | Ignored Build Step on Vercel's shallow clone | use the guarded form that deepens first (Path B) |
 | Tenant deploys but shows another tenant's branding | Root Directory points at the wrong `tenants/<slug>` | fix Root Directory, redeploy |
 | Build fails on `.ts` imports in tests | Node < 22.6 | Project Settings → Node.js Version → 22.x |
 | Deploy succeeds, site 500s | usually a missing env var, not a code bug | `vercel logs <url>` |

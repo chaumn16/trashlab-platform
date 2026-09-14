@@ -87,13 +87,32 @@ deploying this app.
 
 ### Stop every repo push rebuilding it
 
-With Vercel's Git integration, **any** push to the platform repo triggers a
-build — including README edits and tenant-only changes. Set **Project Settings →
-Git → Ignored Build Step** to:
+> **Add this after your first successful deployment, not before.** The filter
+> skips the build when the watched paths are untouched — and on a brand-new
+> project, if your latest commit happens to be a docs change, that means no first
+> deployment at all.
+
+With Vercel's Git integration, **any** push triggers a build — including README
+edits. Set **Project Settings → Git → Ignored Build Step** to:
 
 ```bash
+git fetch --deepen=1 --quiet 2>/dev/null || true
+if ! git rev-parse --verify --quiet HEAD^ >/dev/null; then
+  echo "no parent commit available — building"
+  exit 1
+fi
 git diff --quiet HEAD^ HEAD -- apps/control-plane registry
 ```
+
+Two things this handles that the obvious one-liner does not:
+
+**Vercel clones shallow (depth 1), so `HEAD^` usually does not exist.** A bare
+`git diff --quiet HEAD^ HEAD` fails with `fatal: bad revision 'HEAD^'` and exits
+**128** — outside the 0/1 contract entirely. `--deepen=1` fetches the one extra
+commit the comparison needs.
+
+**If there is still no parent, it builds.** Failing safe costs an unnecessary
+build; failing the other way silently skips a deployment you wanted.
 
 Vercel's contract is inverted from intuition: **exit 0 skips the build, exit 1
 continues it.** `git diff --quiet` exits 0 when nothing changed and 1 when
@@ -273,6 +292,8 @@ is unset or lacks *Contents: read and write* on the platform repo.
 | `no pg_hba.conf entry` / SSL errors | Vercel Postgres and Neon require TLS | use the pooled connection string Vercel gives you, unmodified |
 | Add-tenant says "recorded but not dispatched" | `GITHUB_DISPATCH_TOKEN` unset | expected locally; add it in production |
 | Rebuilds on unrelated pushes | no Ignored Build Step | add the path filter (Step 2) |
+| Build log: `fatal: bad revision 'HEAD^'` | Ignored Build Step run against Vercel's shallow clone | use the guarded form in Step 2, which deepens first |
+| No deployment at all after adding the filter | the head commit did not touch the watched paths | expected — push a change under `apps/control-plane`, or redeploy from the dashboard |
 
 ---
 
