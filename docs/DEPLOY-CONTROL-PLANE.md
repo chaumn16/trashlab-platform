@@ -81,9 +81,22 @@ Then, in **Project Settings → General**, three settings Vercel cannot infer:
 | **Include source files outside of the Root Directory** | **ON** | it imports `registry/tenants.json` from the repo root for its initial seed |
 | **Node.js Version** | 22.x | the app and its deps assume ≥ 22 |
 
-With that second setting off, the build fails with
-`Module not found: ../../../registry/tenants.json`. It is the most common failure
-deploying this app.
+Two failures come from getting these wrong, and neither names the real cause:
+
+| Symptom | Which setting |
+|---|---|
+| `Module not found: ../../../registry/tenants.json` | "Include source files outside…" is **off** |
+| `No Output Directory named "public" found` | **Root Directory** is not `apps/control-plane` |
+
+The second one is confusing because it sounds like a static-site problem. What
+actually happened is that Vercel read the *repo root* `package.json` — a
+workspace root with no `next` dependency and no build script — detected no
+framework, fell back to the "Other" preset, and went looking for a `public/`
+directory that will never exist.
+
+`apps/control-plane/vercel.json` declares `"framework": "nextjs"` so detection
+cannot drift once Root Directory is right. It does not substitute for the
+setting: Vercel only reads that file after Root Directory points at the app.
 
 ### Stop every repo push rebuilding it
 
@@ -308,6 +321,7 @@ is unset or lacks *Contents: read and write* on the platform repo.
 | Rebuilds on unrelated pushes | no Ignored Build Step | add the path filter (Step 2) |
 | Build log: `fatal: bad revision 'HEAD^'` | Ignored Build Step run against Vercel's shallow clone | use the script or the one-liner in Step 2, which deepen first |
 | Build log: `syntax error near unexpected token 'then'` | a multi-line if/then in the Ignored Build Step; Vercel runs it as one line | use `scripts/vercel-ignore-build.sh`, or the single-line form |
+| `No Output Directory named "public" found` | Root Directory not set, so Vercel read the workspace root and detected no framework | set Root Directory to `apps/control-plane` (Step 2) |
 | Build log: `scripts/vercel-ignore-build.sh: No such file or directory` | the step runs from the Root Directory, not the repo root | invoke via `"$(git rev-parse --show-toplevel)/scripts/…"` (Step 2) |
 | Builds stopped happening entirely, no error | cwd-relative pathspec matching nothing, so the filter always says "no changes" | same fix — anchor to the repo root |
 | No deployment at all after adding the filter | the head commit did not touch the watched paths | expected — push a change under `apps/control-plane`, or redeploy from the dashboard |
