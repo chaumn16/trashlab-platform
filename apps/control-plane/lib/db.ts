@@ -85,6 +85,19 @@ export async function seedControlPlane(
   for (const t of data.tenants) await upsertTenant(db, t);
 }
 
+/**
+ * Write a tenant row, updating every field on conflict.
+ *
+ * Identity fields — domain, vercel_project, repo, database, region — are
+ * updated, not just the volatile ones. registry/tenants.json is the source of
+ * truth for who a tenant *is*: the provisioning workflow commits to it, so a
+ * change there must reach the database. Leaving these out of the update meant a
+ * row written once kept its original domain forever, and the dashboard went on
+ * linking to hostnames that had been renamed in the repo.
+ *
+ * Volatile state the control plane owns — CI and deploy events, provisioning
+ * requests — lives in its own tables and is never touched by seeding.
+ */
 export async function upsertTenant(db: Queryable, t: Tenant): Promise<void> {
   await db.query(
     `INSERT INTO tenants (id, display_name, tier, channel, core_version, vercel_project,
@@ -93,8 +106,15 @@ export async function upsertTenant(db: Queryable, t: Tenant): Promise<void> {
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      ON CONFLICT (id) DO UPDATE SET
        display_name = EXCLUDED.display_name,
+       tier = EXCLUDED.tier,
        channel = EXCLUDED.channel,
        core_version = EXCLUDED.core_version,
+       vercel_project = EXCLUDED.vercel_project,
+       domain = EXCLUDED.domain,
+       database = EXCLUDED.database,
+       region = EXCLUDED.region,
+       repo = EXCLUDED.repo,
+       plan = EXCLUDED.plan,
        has_custom_code = EXCLUDED.has_custom_code,
        health = EXCLUDED.health,
        pin_expiry = EXCLUDED.pin_expiry,
