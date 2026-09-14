@@ -55,8 +55,18 @@ export interface FleetEvent {
 
 const data = registryData as unknown as { coreChannels: Channels; tenants: Tenant[] };
 
-/** Ephemeral. See SWAP POINT above. */
-const events: FleetEvent[] = [];
+/**
+ * Ephemeral. See SWAP POINT above.
+ *
+ * Stashed on globalThis because Next re-evaluates modules on hot reload and
+ * renders server actions in a separate module graph from pages — without this,
+ * an event posted by an action is invisible to the page that follows it. This
+ * fixes module re-instantiation ONLY. It does nothing for the real problem:
+ * separate serverless instances in production do not share memory, which is why
+ * the swap point above is not optional.
+ */
+const globalStore = globalThis as unknown as { __events?: FleetEvent[] };
+const events: FleetEvent[] = (globalStore.__events ??= []);
 
 export function readTenants(): Tenant[] {
   return data.tenants;

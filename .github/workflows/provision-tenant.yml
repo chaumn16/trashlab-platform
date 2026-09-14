@@ -1,0 +1,113 @@
+name: Provision tenant
+
+# Triggered by the control plane's Add-tenant form (repository_dispatch), or by
+# hand from the Actions tab.
+#
+# This workflow — not the console — holds VERCEL_TOKEN and GITHUB_TOKEN. Those
+# credentials can create repositories and deploy anywhere in the fleet, which is
+# the wrong blast radius for a sales-facing web app. Keeping them here also gives
+# provisioning a retry button and an audit trail: "who onboarded this customer
+# and when" is answerable from the Actions history.
+
+on:
+  repository_dispatch:
+    types: [provision-tenant]
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Subdomain / repo / project name (e.g. northwind)"
+        required: true
+      displayName:
+        description: "Company name (e.g. Northwind Disposal)"
+        required: true
+      plan:
+        description: "starter | growth | enterprise"
+        required: true
+        default: growth
+      region:
+        description: "iad1 | sfo1 | fra1 | syd1"
+        required: true
+        default: iad1
+
+concurrency:
+  group: provision-${{ github.event.client_payload.slug || inputs.slug }}
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.FLEET_GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Resolve inputs
+        id: input
+        run: |
+          echo "slug=${{ github.event.client_payload.slug || inputs.slug }}"               >> "$GITHUB_OUTPUT"
+          echo "name=${{ github.event.client_payload.displayName || inputs.displayName }}" >> "$GITHUB_OUTPUT"
+          echo "plan=${{ github.event.client_payload.plan || inputs.plan }}"               >> "$GITHUB_OUTPUT"
+          echo "region=${{ github.event.client_payload.region || inputs.region }}"         >> "$GITHUB_OUTPUT"
+
+      # Dry run first, always. It prints every Vercel and GitHub call without
+      # making one, so a bad slug or a duplicate is caught before anything is
+      # created — provisioning is far cheaper to prevent than to unwind.
+      - name: Plan
+        run: |
+          node packages/cli/bin/platform.mjs tenant add "${{ steps.input.outputs.slug }}" \
+            --name="${{ steps.input.outputs.name }}" \
+            --plan="${{ steps.input.outputs.plan }}" \
+            --region="${{ steps.input.outputs.region }}"
+
+      - name: Provision
+        run: |
+          node packages/cli/bin/platform.mjs tenant add "${{ steps.input.outputs.slug }}" \
+            --name="${{ steps.input.outputs.name }}" \
+            --plan="${{ steps.input.outputs.plan }}" \
+            --region="${{ steps.input.outputs.region }}" \
+            --apply
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+          GITHUB_TOKEN: ${{ secrets.FLEET_GITHUB_TOKEN }}
+
+      # `platform tenant add` writes the new tenant into registry/tenants.json.
+      # Committing it is what makes the tenant appear on the fleet dashboard.
+      - name: Commit registry
+        run: |
+          git config user.name  "trashlab-bot"
+          git config user.email "bot@trashlab.internal"
+          git add registry/tenants.json tenants/ 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No registry change to commit."
+          else
+            git commit -m "provision: ${{ steps.input.outputs.slug }} (${{ steps.input.outputs.name }})
+
+          Requested by ${{ github.event.client_payload.requestedBy || github.actor }}."
+            git push
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### ${{ steps.input.outputs.name }}"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Slug | \`${{ steps.input.outputs.slug }}\` |"
+            echo "| URL | https://${{ steps.input.outputs.slug }}.trashlab.app |"
+            echo "| Repo | \`trashlab/tenant-${{ steps.input.outputs.slug }}\` |"
+            echo "| Plan | ${{ steps.input.outputs.plan }} |"
+            echo "| Region | ${{ steps.input.outputs.region }} |"
+            echo "| Status | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

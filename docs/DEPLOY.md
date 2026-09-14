@@ -15,10 +15,45 @@ There are four procedures. Only the first involves a human decision.
 
 ## 1. Add a new tenant
 
-Triggered by **sales**, from the control-plane console or the CLI. No engineer.
+Triggered by **sales**. No engineer, no ticket.
+
+### The sales path: the console
+
+Open the control plane → **Add tenant** (`/tenants/new`), fill in four fields:
+
+| Field | Notes |
+|---|---|
+| Company name | as it appears in their app header |
+| Subdomain | leave blank to derive it from the name — **permanent**, it becomes the URL, repo, and Vercel project |
+| Plan | starter / growth / enterprise |
+| Region | set once, at creation |
+
+Submit. The console validates (slug format, reserved subdomains, duplicates)
+and starts the provisioning workflow; the request appears on the dashboard and
+the tenant is live in about four minutes.
+
+Everything else — core version, tier, database, CI, branch protection — is
+decided by the platform, not typed in by whoever closed the deal.
+
+### The engineer path: the CLI
+
+Same work, from a terminal. Useful for scripting and for debugging a failed
+console request:
 
 ```bash
 platform tenant add northwind --name="Northwind Disposal" --plan=growth --apply
+```
+
+### The integration path: the API
+
+For provisioning on "deal won" straight from a CRM. Shares the console's
+validation, so the two cannot drift:
+
+```bash
+curl -X POST https://control.trashlab.app/api/tenants \
+  -H "Authorization: Bearer $CONTROL_PLANE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"displayName":"Northwind Disposal","plan":"growth","region":"iad1"}'
 ```
 
 Seven automated steps, ~4 minutes end to end:

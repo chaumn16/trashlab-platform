@@ -1,4 +1,5 @@
 import { readTenants, readChannels, readEvents, semverLt } from "../lib/registry";
+import { readRequests } from "../lib/provision";
 
 /**
  * Fleet dashboard.
@@ -14,6 +15,7 @@ export default function Dashboard() {
   const tenants = readTenants();
   const channels = readChannels();
   const events = readEvents();
+  const requests = readRequests();
 
   const behind = tenants.filter((t) => semverLt(t.coreVersion, channels.stable));
   const expired = tenants.filter((t) => t.pinExpiry && new Date(t.pinExpiry) < new Date());
@@ -21,12 +23,23 @@ export default function Dashboard() {
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
-      <header style={{ marginBottom: 22 }}>
-        <h1 style={{ margin: 0, fontSize: 20, letterSpacing: "-.01em" }}>TrashLab Control Plane</h1>
-        <p style={{ margin: "4px 0 0", color: "#667085", fontSize: 13 }}>
-          {tenants.length} tenants · stable {channels.stable} · beta {channels.beta} · canary{" "}
-          {channels.canary}
-        </p>
+      <header style={{ marginBottom: 22, display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 20, letterSpacing: "-.01em" }}>TrashLab Control Plane</h1>
+          <p style={{ margin: "4px 0 0", color: "#667085", fontSize: 13 }}>
+            {tenants.length} tenants · stable {channels.stable} · beta {channels.beta} · canary{" "}
+            {channels.canary}
+          </p>
+        </div>
+        <a
+          href="/tenants/new"
+          style={{
+            marginLeft: "auto", background: "#1f6feb", color: "#fff", borderRadius: 6,
+            padding: "9px 16px", fontSize: 14, fontWeight: 600, textDecoration: "none",
+          }}
+        >
+          Add tenant
+        </a>
       </header>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 14, marginBottom: 20 }}>
@@ -94,6 +107,30 @@ export default function Dashboard() {
           </table>
         </div>
       </Card>
+
+      {requests.length > 0 && (
+        <Card accent="#1f6feb">
+          <h2 style={h2}>Provisioning</h2>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <tbody>
+              {requests.map((r, i) => (
+                <tr key={i} style={{ borderTop: i ? "1px solid #e4e7ec" : undefined }}>
+                  <td style={td}><strong>{r.slug}</strong> — {r.displayName}</td>
+                  <td style={td}>{r.plan} · {r.region}</td>
+                  <td style={td}>
+                    <span style={{
+                      background: r.status === "dispatched" ? "#d1e7dd" : r.status === "failed" ? "#f8d7da" : "#fff3cd",
+                      color: r.status === "dispatched" ? "#0f5132" : r.status === "failed" ? "#842029" : "#664d03",
+                      borderRadius: 999, padding: "2px 9px", fontSize: 11, fontWeight: 600,
+                    }}>{r.status}</span>
+                  </td>
+                  <td style={{ ...td, color: "#667085" }}>{r.detail ?? ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       <Card>
         <h2 style={h2}>Recent CI and deploy events</h2>

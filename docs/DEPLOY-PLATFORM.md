@@ -100,8 +100,10 @@ tenant's CI and deploy workflows post to.
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/` | GET | fleet dashboard — versions, drift, health, recent events |
+| `/` | GET | fleet dashboard — versions, drift, health, provisioning, events |
+| `/tenants/new` | GET | **the Add-tenant form sales uses** |
 | `/api/tenants` | GET | the registry as data |
+| `/api/tenants` | POST | provision a tenant programmatically (CRM integration) |
 | `/api/ci-result` | POST | tenant CI reports pass/fail per PR |
 | `/api/deploy-result` | POST | tenant deploys report success + URL |
 
@@ -132,7 +134,20 @@ Also set **Node.js Version → 22.x**.
 openssl rand -hex 32                                  # generate a real token
 vercel env add CONTROL_PLANE_TOKEN production
 vercel env add CONTROL_PLANE_TOKEN preview
+
+# Lets the Add-tenant form start the provisioning workflow
+vercel env add GITHUB_DISPATCH_TOKEN production
+vercel env add PLATFORM_REPO production               # chaumn16/trashlab-platform
 ```
+
+**`GITHUB_DISPATCH_TOKEN` is deliberately weak.** A fine-grained PAT with
+*Contents: read and write* on the platform repo only. It triggers a workflow; it
+does not provision. `VERCEL_TOKEN` and the fleet GitHub token live in GitHub
+Actions secrets and never touch the web app — see
+[§2b](#2b-the-provisioning-workflow) for why.
+
+Leave it unset and the console still works: requests are validated and listed,
+but nothing is dispatched.
 
 See [`apps/control-plane/.env.example`](../apps/control-plane/.env.example) for
 the full list. Locally, copy it to `.env.local`.
@@ -165,6 +180,43 @@ curl -s -X POST $CP/api/ci-result \
 
 Open the dashboard — you should see the fleet table, the drift panel, and the
 event you just posted.
+
+### 2b. The provisioning workflow
+
+The console does **not** provision. It validates the request and dispatches
+[`.github/workflows/provision-tenant.yml`](../.github/workflows/provision-tenant.yml),
+which runs `platform tenant add --apply`.
+
+Three reasons, and they are worth understanding before you "simplify" it:
+
+1. **Provisioning takes minutes** — repo, database, project, domain, deploy.
+   Serverless functions time out; a workflow does not.
+2. **Blast radius.** `VERCEL_TOKEN` and the fleet GitHub token can create repos
+   and deploy anywhere in the fleet. A sales-facing web app is the wrong place
+   for them.
+3. **Retry and audit for free.** "Who onboarded this customer, and when" is
+   answerable from the Actions history.
+
+Set these once on the platform repo:
+
+```bash
+gh secret   set VERCEL_TOKEN        --repo chaumn16/trashlab-platform
+gh secret   set FLEET_GITHUB_TOKEN  --repo chaumn16/trashlab-platform   # repo + workflow scope
+gh variable set VERCEL_TEAM_ID      --repo chaumn16/trashlab-platform --body "team_xxxx"
+```
+
+The workflow runs `tenant add` **as a dry run first**, then with `--apply`. A bad
+slug or a duplicate fails before anything is created — provisioning is far
+cheaper to prevent than to unwind.
+
+### 2c. Put the console behind SSO
+
+`/tenants/new` creates customers and `/` lists every one of them. Neither page is
+token-protected — they are human UI, and a bearer token in a browser is not auth.
+
+Enable **Vercel Authentication** (Project Settings → Deployment Protection) or
+put your own IdP in front. Do this before sharing the URL with anyone, including
+sales.
 
 ---
 
@@ -219,5 +271,9 @@ change before it runs a real fleet:
    calls for a token per tenant so a leak from one repo can only write that
    tenant's status, matching every other credential in this system. This is the
    one place the demo is weaker than the architecture it implements.
-3. **Put the dashboard behind SSO.** It exposes the whole customer list. Vercel
-   Authentication or your own IdP — it must not be a public URL.
+3. **Put the console behind SSO** (§2c). It lists every customer and can create
+   more. It must not be a public URL.
+4. **Record who requested each tenant.** The console sends `requestedBy:
+   "console"` because there is no identity to read yet. Once SSO is in front, pass
+   the authenticated user through — provisioning a customer should never be
+   anonymous.

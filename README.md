@@ -128,7 +128,8 @@ repo later with the promotion steps in
 
 ### Run the control plane
 
-The fleet dashboard and the API every tenant's CI reports to:
+The fleet dashboard, the **Add-tenant form sales uses**, and the API every
+tenant's CI reports to:
 
 ```bash
 cp apps/control-plane/.env.example apps/control-plane/.env.local
@@ -145,6 +146,18 @@ curl -s -X POST localhost:3002/api/ci-result \
 
 Auth **fails closed**: with `CONTROL_PLANE_TOKEN` unset every API route returns
 `503`, never an open endpoint.
+
+#### How sales adds a tenant
+
+Open <http://localhost:3002/tenants/new> and fill in four fields — company name,
+subdomain, plan, region. That's the whole flow; no engineer, no ticket.
+
+The console never provisions directly. It validates the request and dispatches
+[`provision-tenant.yml`](.github/workflows/provision-tenant.yml), which runs
+`platform tenant add --apply` with credentials that live in GitHub Actions
+secrets — not in a sales-facing web app. Without `GITHUB_DISPATCH_TOKEN` set,
+requests are validated and listed but nothing is dispatched, which is what you
+want locally.
 
 ### Run the CLI
 
@@ -232,8 +245,11 @@ export CONTROL_PLANE_TOKEN=...
 
 ### Add a tenant
 
-Once a project has been stood up by hand at least once
-([docs/VERCEL.md](docs/VERCEL.md)), this replaces all of it:
+Sales does this from the console — **Add tenant**, four fields, ~4 minutes. See
+[docs/DEPLOY.md §1](docs/DEPLOY.md#1-add-a-new-tenant).
+
+The equivalent from a terminal, once a project has been stood up by hand at
+least once ([docs/VERCEL.md](docs/VERCEL.md)):
 
 ```bash
 platform tenant add northwind --name="Northwind Disposal" --plan=growth --apply
