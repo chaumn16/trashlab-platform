@@ -52,12 +52,57 @@ npm run build -w @trashlab/core
 `npm run build -w @trashlab/core` is required before anything else — the tenant
 apps import core's compiled output from `packages/core/dist`.
 
-### Run the two demo tenants
+### Run a tenant locally
+
+A tenant lives in one of two places, and setup differs:
+
+| | **Mode A — own repo** | **Mode B — in this monorepo** |
+|---|---|---|
+| Lives at | `chaumn16/tenant-globex` | `tenants/<slug>` |
+| Gets core from | npm, pinned | workspace symlink to `packages/core` |
+| Needs a registry token | yes (or `link:core`) | no |
+| Who it's for | every production tenant | core development, demos |
+
+#### Mode B — a tenant in this repo (no separate clone)
+
+Nothing extra to set up. `npm install` at the root symlinks
+`node_modules/@trashlab/core → packages/core`, so tenants pick up your core
+changes with no publish step:
 
 ```bash
-npm run dev -w tenant-globex   # http://localhost:3000
-npm run dev -w tenant-acme     # http://localhost:3001
+npm run build -w @trashlab/core     # rebuild after editing core
+npm run dev -w tenant-globex        # http://localhost:3000
+npm run dev -w tenant-acme          # http://localhost:3001
 ```
+
+This is the loop for working on core: edit `packages/core/src`, rebuild, refresh.
+
+#### Mode A — a tenant with its own repo
+
+```bash
+git clone https://github.com/chaumn16/tenant-globex.git
+cd tenant-globex
+export CORE_REGISTRY_TOKEN=<github token with read:packages>
+npm install
+npm run dev
+```
+
+`.npmrc` points `@trashlab` at GitHub Packages and reads that token. Without it,
+`npm install` fails with a 401 on `@trashlab/core`.
+
+**No token, or testing an unpublished core?** Point the tenant at a local
+checkout instead — clone this repo as a sibling directory, then:
+
+```bash
+npm run link:core     # repoints @trashlab/core at ../trashlab-platform/packages/core
+npm run dev
+npm run unlink:core   # restore the pinned version when done
+```
+
+Never commit a lockfile produced while linked — it encodes a local filesystem
+path.
+
+### Compare the two tenants
 
 Open `/jobs/job_1003` on both. Same core version, different businesses:
 
@@ -70,6 +115,16 @@ Open `/jobs/job_1003` on both. Same core version, different businesses:
 
 Globex's entire divergence is four files: a pricing hook, a validation hook, two
 slot renderers, one custom route. Neither app is a fork.
+
+### Create a new tenant locally
+
+```bash
+node packages/cli/bin/platform.mjs tenant add northwind --name="Northwind Disposal" --apply
+```
+
+Scaffolds `tenants/northwind` from the template as a Mode B tenant. Give it a
+repo later with the promotion steps in
+[docs/VERCEL.md §10](docs/VERCEL.md#10-promoting-a-monorepo-tenant-to-its-own-repo).
 
 ### Run the control plane
 
