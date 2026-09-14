@@ -62,6 +62,7 @@ const data = registryData as unknown as { coreChannels: Channels; tenants: Tenan
  * already knowing the fleet, so the first deploy is not an empty dashboard.
  */
 let pooling: Promise<Queryable | null> | null = null;
+let lastError: string | null = null;
 
 function db(): Promise<Queryable | null> {
   if (pooling) return pooling;
@@ -71,16 +72,28 @@ function db(): Promise<Queryable | null> {
     return pooling;
   }
   pooling = (async () => {
-    const { Pool } = await import("pg");
-    const isLocal = /@(localhost|127\.0\.0\.1)/.test(url);
-    const pool = new Pool({
-      connectionString: url,
-      ssl: isLocal ? false : { rejectUnauthorized: false },
-      max: 3,
-    }) as unknown as Queryable;
-    await migrateControlPlane(pool);
-    await seedControlPlane(pool, data);
-    return pool;
+    try {
+      const { Pool } = await import("pg");
+      const isLocal = /@(localhost|127\.0\.0\.1)/.test(url);
+      const pool = new Pool({
+        connectionString: url,
+        ssl: isLocal ? false : { rejectUnauthorized: false },
+        max: 3,
+      }) as unknown as Queryable;
+      await migrateControlPlane(pool);
+      await seedControlPlane(pool, data);
+      lastError = null;
+      return pool;
+    } catch (err) {
+      // A control plane whose database is unreachable must still render. It is
+      // the screen an operator opens *because* something is wrong; replacing it
+      // with a blank 500 removes the only tool they have. Fall back to the
+      // bundled registry and surface the reason (see /api/health).
+      lastError = err instanceof Error ? err.message : String(err);
+      console.error(JSON.stringify({ src: "control-plane", event: "db-unavailable", error: lastError }));
+      pooling = null;   // allow a later request to retry
+      return null;
+    }
   })();
   return pooling;
 }
@@ -100,19 +113,33 @@ const events: FleetEvent[] = (globalStore.__events ??= []);
 
 export async function readTenants(): Promise<Tenant[]> {
   const conn = await db();
-  return conn ? readTenantsDb(conn) : data.tenants;
+  if (!conn) return data.tenants;
+  try {
+    return await readTenantsDb(conn);
+  } catch {
+    return data.tenants;
+  }
 }
 
 export async function readChannels(): Promise<Channels> {
   const conn = await db();
-  return conn ? readChannelsDb(conn) : data.coreChannels;
+  if (!conn) return data.coreChannels;
+  try {
+    return await readChannelsDb(conn);
+  } catch {
+    return data.coreChannels;
+  }
 }
 
 export async function recordEvent(e: FleetEvent): Promise<void> {
   const conn = await db();
   if (conn) {
-    await recordEventDb(conn, e);
-    return;
+    try {
+      await recordEventDb(conn, e);
+      return;
+    } catch {
+      // fall through — keep it for this instance rather than failing the caller
+    }
   }
   events.unshift(e);
   events.length = Math.min(events.length, 50);
@@ -120,7 +147,69 @@ export async function recordEvent(e: FleetEvent): Promise<void> {
 
 export async function readEvents(): Promise<FleetEvent[]> {
   const conn = await db();
-  return conn ? readEventsDb(conn) : events;
+  if (!conn) return events;
+  try {
+    return await readEventsDb(conn);
+  } catch {
+    return events;
+  }
+}
+
+/**
+ * What is actually backing this instance, and whether it works. Powers
+ * /api/health and the dashboard banner.
+ *
+ * Reports the host but never the credentials.
+ */
+export async function describeStorage(): Promise<{
+  ok: boolean;
+  backend: "postgres" | "bundled";
+  configured: boolean;
+  host?: string;
+  error?: string;
+  note?: string;
+}> {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    return {
+      ok: true,
+      backend: "bundled",
+      configured: false,
+      note:
+        "DATABASE_URL is not set. Reads come from the bundled registry and writes " +
+        "are held in memory — they will not survive a restart and are not shared " +
+        "between serverless instances. Correct for local development, wrong in production.",
+    };
+  }
+
+  let host: string | undefined;
+  try {
+    host = new URL(url).host;
+  } catch {
+    return {
+      ok: false,
+      backend: "postgres",
+      configured: true,
+      error: "DATABASE_URL is not a parseable URL",
+    };
+  }
+
+  const conn = await db();
+  if (!conn) {
+    return { ok: false, backend: "postgres", configured: true, host, error: lastError ?? "connection failed" };
+  }
+  try {
+    await conn.query("SELECT 1");
+    return { ok: true, backend: "postgres", configured: true, host };
+  } catch (err) {
+    return {
+      ok: false,
+      backend: "postgres",
+      configured: true,
+      host,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 /** Semver compare, enough for release ordering (handles -rc.N prereleases). */

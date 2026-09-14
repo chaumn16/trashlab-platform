@@ -39,21 +39,54 @@ export interface ProvisionRequest {
 const globalStore = globalThis as unknown as { __provisionRequests?: ProvisionRequest[] };
 const requests: ProvisionRequest[] = (globalStore.__provisionRequests ??= []);
 
+/**
+ * Connect, or fall back to in-memory.
+ *
+ * Guarded for the same reason as lib/registry.ts: an unreachable database must
+ * degrade the dashboard, not replace it with a blank 500. This path was missed
+ * the first time and kept the page erroring even after the registry reads were
+ * made safe — every read on the page has to be guarded, not most of them.
+ *
+ * The pool is cached; building one per call exhausts connections under load.
+ */
+let pooling: Promise<Queryable | null> | null = null;
+
 async function db(): Promise<Queryable | null> {
   const url = process.env.DATABASE_URL;
   if (!url) return null;
-  const { Pool } = await import("pg");
-  const isLocal = /@(localhost|127\.0\.0\.1)/.test(url);
-  return new Pool({
-    connectionString: url,
-    ssl: isLocal ? false : { rejectUnauthorized: false },
-    max: 2,
-  }) as unknown as Queryable;
+  if (pooling) return pooling;
+
+  pooling = (async () => {
+    try {
+      const { Pool } = await import("pg");
+      const isLocal = /@(localhost|127\.0\.0\.1)/.test(url);
+      const pool = new Pool({
+        connectionString: url,
+        ssl: isLocal ? false : { rejectUnauthorized: false },
+        max: 2,
+      }) as unknown as Queryable;
+      await pool.query("SELECT 1");     // fail here, not mid-render
+      return pool;
+    } catch (err) {
+      console.error(JSON.stringify({
+        src: "control-plane", event: "provision-db-unavailable",
+        error: err instanceof Error ? err.message : String(err),
+      }));
+      pooling = null;                   // let a later request retry
+      return null;
+    }
+  })();
+  return pooling;
 }
 
 export async function readRequests(): Promise<ProvisionRequest[]> {
   const conn = await db();
-  return conn ? readRequestsDb(conn) : requests;
+  if (!conn) return requests;
+  try {
+    return await readRequestsDb(conn);
+  } catch {
+    return requests;   // degraded, never fatal
+  }
 }
 
 // Re-exported for server-side callers. Client components must import these
@@ -185,8 +218,16 @@ export async function submit(input: {
 async function persist(r: ProvisionRequest): Promise<void> {
   const conn = await db();
   if (conn) {
-    await recordRequestDb(conn, r);
-    return;
+    try {
+      await recordRequestDb(conn, r);
+      return;
+    } catch (err) {
+      console.error(JSON.stringify({
+        src: "control-plane", event: "provision-persist-failed",
+        error: err instanceof Error ? err.message : String(err),
+      }));
+      // fall through and at least keep it for this instance
+    }
   }
   requests.unshift(r);
   requests.length = Math.min(requests.length, 25);

@@ -1,5 +1,6 @@
 import { readTenants, readChannels, readEvents, semverLt } from "../lib/registry";
 import { readRequests } from "../lib/provision";
+import { describeStorage } from "../lib/registry";
 
 /**
  * Fleet dashboard.
@@ -16,6 +17,7 @@ export default async function Dashboard() {
   const channels = await readChannels();
   const events = await readEvents();
   const requests = await readRequests();
+  const storage = await describeStorage();
 
   const behind = tenants.filter((t) => semverLt(t.coreVersion, channels.stable));
   const expired = tenants.filter((t) => t.pinExpiry && new Date(t.pinExpiry) < new Date());
@@ -41,6 +43,32 @@ export default async function Dashboard() {
           Add tenant
         </a>
       </header>
+
+      {!storage.ok && (
+        <Card accent="#b42318">
+          <h2 style={{ ...h2, color: "#b42318" }}>Database unreachable</h2>
+          <p style={{ margin: "0 0 8px", fontSize: 14 }}>
+            Showing the bundled registry instead. Writes — provisioning requests, CI and deploy
+            events — are being held in memory and will be lost.
+          </p>
+          <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", fontSize: 13 }}>
+            <dt style={{ color: "#667085" }}>Host</dt>
+            <dd style={{ margin: 0 }}>{storage.host ?? "—"}</dd>
+            <dt style={{ color: "#667085" }}>Error</dt>
+            <dd style={{ margin: 0, fontFamily: "ui-monospace, monospace" }}>{storage.error}</dd>
+          </dl>
+          <p style={{ margin: "10px 0 0", fontSize: 12, color: "#667085" }}>
+            Details at <code>/api/health</code>.
+          </p>
+        </Card>
+      )}
+
+      {storage.backend === "bundled" && (
+        <Card accent="#b45309">
+          <h2 style={{ ...h2, color: "#b45309" }}>No database configured</h2>
+          <p style={{ margin: 0, fontSize: 14 }}>{storage.note}</p>
+        </Card>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 14, marginBottom: 20 }}>
         <Stat label="Tenants" value={String(tenants.length)} />
