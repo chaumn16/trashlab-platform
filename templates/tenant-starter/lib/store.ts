@@ -1,6 +1,6 @@
 import { createStore } from "@trashlab/core";
 import type { DataStore } from "@trashlab/core";
-import { createPostgresStore } from "@trashlab/core/db";
+import { createPostgresStore, pgPoolConfig, caFromEnv } from "@trashlab/core/db";
 
 /**
  * Resolves this tenant's data source.
@@ -34,11 +34,13 @@ export async function getStore(): Promise<DataStore> {
   // local development never needs the driver installed.
   const { Pool } = await import("pg");
 
-  // Vercel Postgres and Neon require TLS; a local database usually does not.
-  const isLocal = /@(localhost|127\.0\.0\.1)/.test(url);
+  // pgPoolConfig strips `sslmode` from the URL before configuring TLS. pg
+  // parses sslmode out of the connection string and lets it override an
+  // explicit ssl option, and it treats `require` as verify-full — which fails
+  // against Supabase, Neon and Vercel Postgres with
+  // "self-signed certificate in certificate chain".
   const pool = new Pool({
-    connectionString: url,
-    ssl: isLocal ? false : { rejectUnauthorized: false },
+    ...pgPoolConfig(url, caFromEnv()),
     // Serverless: many short-lived instances, each needing very few connections.
     // Raise this only alongside a connection pooler.
     max: 3,

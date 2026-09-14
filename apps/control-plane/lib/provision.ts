@@ -1,5 +1,6 @@
 import { readTenants } from "./registry";
 import { recordRequestDb, readRequestsDb, type Queryable } from "./db";
+import { pgPoolConfig } from "./pg-config";
 import { PLANS, REGIONS } from "./plans";
 
 /**
@@ -59,10 +60,8 @@ async function db(): Promise<Queryable | null> {
   pooling = (async () => {
     try {
       const { Pool } = await import("pg");
-      const isLocal = /@(localhost|127\.0\.0\.1)/.test(url);
       const pool = new Pool({
-        connectionString: url,
-        ssl: isLocal ? false : { rejectUnauthorized: false },
+        ...pgPoolConfig(url),
         max: 2,
       }) as unknown as Queryable;
       await pool.query("SELECT 1");     // fail here, not mid-render

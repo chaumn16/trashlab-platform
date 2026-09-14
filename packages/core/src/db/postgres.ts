@@ -1,6 +1,7 @@
 import type { Customer, Site, Job, JobStatus } from "../extend/types.js";
 import type { DataStore, SeedData } from "./store.js";
 import { MIGRATIONS } from "./migrations/index.js";
+export { pgPoolConfig, caFromEnv, type PgPoolConfig } from "./connect.js";
 
 /**
  * Postgres-backed data access.

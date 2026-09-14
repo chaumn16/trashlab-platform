@@ -11,6 +11,7 @@
  * Postgres client is not forced onto ours.
  */
 import { migrate, createPostgresStore, seed } from "../dist/db/postgres.js";
+import { pgPoolConfig, caFromEnv } from "../dist/db/connect.js";
 import { defaultSeed } from "../dist/db/store.js";
 
 const argv = process.argv.slice(2);
@@ -60,14 +61,11 @@ try {
   process.exit(1);
 }
 
-// Vercel Postgres and Neon both require TLS; a local dev database usually does
-// not offer it. Decide from the URL rather than making the caller configure it.
-const isLocal = /@(localhost|127\.0\.0\.1)/.test(url);
-const pool = new Pool({
-  connectionString: url,
-  ssl: isLocal ? false : { rejectUnauthorized: false },
-  max: 1,
-});
+// pgPoolConfig strips `sslmode` from the URL before configuring TLS: pg lets a
+// connection-string sslmode override an explicit ssl option, and treats
+// `require` as verify-full, which fails against Supabase/Neon/Vercel Postgres
+// with "self-signed certificate in certificate chain".
+const pool = new Pool({ ...pgPoolConfig(url, caFromEnv()), max: 1 });
 
 try {
   if (cmd === "migrate") {

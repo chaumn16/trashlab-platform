@@ -3,6 +3,7 @@ import {
   migrateControlPlane, seedControlPlane, readTenantsDb, readChannelsDb,
   recordEventDb, readEventsDb, type Queryable,
 } from "./db";
+import { pgPoolConfig } from "./pg-config";
 
 /**
  * The tenant registry — source of truth for the fleet.
@@ -74,10 +75,8 @@ function db(): Promise<Queryable | null> {
   pooling = (async () => {
     try {
       const { Pool } = await import("pg");
-      const isLocal = /@(localhost|127\.0\.0\.1)/.test(url);
       const pool = new Pool({
-        connectionString: url,
-        ssl: isLocal ? false : { rejectUnauthorized: false },
+        ...pgPoolConfig(url),
         max: 3,
       }) as unknown as Queryable;
       await migrateControlPlane(pool);
