@@ -133,6 +133,24 @@ Try breaking the contract in `tenants/globex/extensions/pricing.ts` — read the
 clock, return fractional cents, let line items disagree with the total — and the
 conformance suite names the exact rule you broke.
 
+### Two shapes of tenant
+
+The tenants in this repo and the ones in production resolve core differently, and
+the difference matters when you are developing:
+
+| | **In this monorepo** (`tenants/acme`, `tenants/globex`) | **Own repo** (`tenant-globex`) |
+|---|---|---|
+| Gets core from | npm workspace symlink to `packages/core` | vendored tarball in `vendor/` |
+| Core edits are live | **yes** — rebuild core, refresh | no — re-vendor, or `link:core` |
+| Credentials needed | none | none |
+| Who it's for | core development, demos | every production tenant |
+
+The two demo tenants have **no `vendor/` directory** on purpose: they resolve
+core through the workspace so a core edit shows up on refresh. A tenant
+scaffolded by `platform tenant add` *does* get a vendored tarball, because it is
+destined to become a standalone repo. `platform tenant deploy` detects which
+shape it is dealing with and never converts one into the other.
+
 ### Running a tenant that has its own repo
 
 Production tenants live in their own repos. `tenant-globex` is the same tenant in
