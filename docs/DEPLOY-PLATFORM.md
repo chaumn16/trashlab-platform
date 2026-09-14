@@ -107,6 +107,10 @@ the callback API every tenant's CI and deploy workflows post to.
 
 ### 2a. Create its database — do this first
 
+> Rehearse locally: `npm run db:up`, then
+> `docker exec trashlab-pg createdb -U trashlab control_plane` and run the app
+> with that `DATABASE_URL`. Same migrate-and-seed-on-boot path as production.
+
 The control plane has its **own** Postgres, separate from every tenant's. It
 holds data *about* tenants (registry, events, provisioning requests), never data
 *belonging to* them.

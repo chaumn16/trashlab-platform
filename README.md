@@ -133,6 +133,72 @@ Try breaking the contract in `tenants/globex/extensions/pricing.ts` — read the
 clock, return fractional cents, let line items disagree with the total — and the
 conformance suite names the exact rule you broke.
 
+### Run against a real Postgres
+
+By default the apps use core's seeded in-memory store — no database needed. To
+develop against real Postgres (and to exercise the exact path production takes),
+there is a `docker-compose.yml` here.
+
+**Requires Docker.** It starts on port **5433**, not 5432, so it cannot collide
+with a Postgres you already run.
+
+```bash
+npm run db:up          # start Postgres, wait until healthy
+npm run db:migrate     # create customers, sites, jobs, _core_migrations
+npm run db:seed        # load starter rows
+npm run dev:pg         # globex against Postgres, on http://localhost:3004
+```
+
+Port 3004 is deliberate: `npm run dev -w tenant-globex` still runs on 3000
+against the in-memory store, so you can hold both up and compare the same page
+side by side.
+
+**Prove it is really reading the database:**
+
+```bash
+npm run db:psql
+```
+
+```sql
+UPDATE customers SET name = 'Northgate Construction LLC' WHERE id = 'cus_3';
+```
+
+Reload <http://localhost:3004/jobs/job_1003>. The new name appears; :3000 still
+shows the old one. Same code, same commit, different data source — which is
+exactly the difference `DATABASE_URL` makes in production.
+
+```bash
+npm run db:down        # stop and DELETE the data
+```
+
+#### Pointing any tenant at it
+
+`DATABASE_URL` is all that switches a tenant over — `lib/store.ts` picks Postgres
+when it is set:
+
+```bash
+DATABASE_URL=postgres://trashlab:devpass@localhost:5433/tenant_globex \
+  npm run dev -w tenant-acme -- --port 3005
+```
+
+In production each tenant has its **own** database and never shares one. Two
+tenants pointed at the same database do not "mostly work" — they merge their
+customers.
+
+#### The control plane too
+
+It has its own database, separate from every tenant's:
+
+```bash
+docker exec trashlab-pg createdb -U trashlab control_plane
+DATABASE_URL=postgres://trashlab:devpass@localhost:5433/control_plane \
+  npm run dev -w @trashlab/control-plane
+```
+
+It migrates and seeds itself on first use from `registry/tenants.json`. With it
+set, provisioning requests and CI events survive a restart; without it they are
+held in memory and do not.
+
 ### Two shapes of tenant
 
 The tenants in this repo and the ones in production resolve core differently, and
@@ -179,10 +245,11 @@ Never commit a lockfile produced while linked — it encodes a local path.
 
 ### Notes
 
-- **State resets on restart.** The control plane's provisioning requests and
-  events live in memory (`apps/control-plane/lib/registry.ts` marks the swap
-  point), and tenant data is a seeded in-memory store
-  (`packages/core/src/db/store.ts`).
+- **State resets on restart — unless you set `DATABASE_URL`.** Without it the
+  control plane holds provisioning requests and events in memory, and tenants
+  serve core's seeded fixtures. See
+  [Run against a real Postgres](#run-against-a-real-postgres). Production always
+  sets it.
 - **No login anywhere.** Fine locally; the first thing to fix before deploying
   the control plane.
 - **`initech` has no code.** It exists only as a registry row to demonstrate

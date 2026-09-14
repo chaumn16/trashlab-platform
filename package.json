@@ -11,7 +11,13 @@
     "build:core": "npm run build -w @trashlab/core",
     "conformance": "node --test packages/core/dist/conformance/*.test.js",
     "platform": "node packages/cli/bin/platform.mjs",
-    "dev:control-plane": "npm run dev -w @trashlab/control-plane"
+    "dev:control-plane": "npm run dev -w @trashlab/control-plane",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down -v",
+    "db:psql": "docker exec -it trashlab-pg psql -U trashlab -d tenant_globex",
+    "db:migrate": "DATABASE_URL=postgres://trashlab:devpass@localhost:5433/tenant_globex node packages/core/bin/trashlab-core.mjs migrate",
+    "db:seed": "DATABASE_URL=postgres://trashlab:devpass@localhost:5433/tenant_globex node packages/core/bin/trashlab-core.mjs seed",
+    "dev:pg": "DATABASE_URL=postgres://trashlab:devpass@localhost:5433/tenant_globex npm run dev -w tenant-globex -- --port 3004"
   },
   "engines": {
     "node": ">=20"

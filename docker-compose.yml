@@ -1,0 +1,31 @@
+# Local Postgres for developing against a real database instead of the
+# in-memory store. Not used in production — there, each tenant gets its own
+# Vercel Postgres or Neon database (see docs/VERCEL.md §3).
+#
+#   npm run db:up        start
+#   npm run db:migrate   create the schema
+#   npm run db:seed      load starter rows
+#   npm run dev:pg       run globex against it, on :3004
+#   npm run db:psql      open a shell
+#   npm run db:down      stop and DELETE the data
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: trashlab-pg
+    environment:
+      POSTGRES_USER: trashlab
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: tenant_globex
+    ports:
+      # 5433, not 5432, so this never collides with a Postgres you already run.
+      - "5433:5432"
+    volumes:
+      - trashlab-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trashlab -d tenant_globex"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  trashlab-pgdata:

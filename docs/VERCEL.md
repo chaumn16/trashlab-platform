@@ -26,7 +26,7 @@ vercel login
 
 You need a Vercel account. The Hobby plan is enough to deploy one tenant and try
 this end to end; scaling to 2,000 projects needs Enterprise (see
-[Capacity](#7-capacity-limits-to-settle-early)).
+[Capacity](#8-capacity-limits-to-settle-early)).
 
 ---
 
@@ -137,6 +137,11 @@ needs no token and cannot 401, rate-limit, or depend on a registry being up.
 ---
 
 ## 3. Give the tenant its own database
+
+> **Rehearse this locally first.** The platform repo ships a `docker-compose.yml`
+> and `npm run db:up / db:migrate / db:seed / dev:pg`, which exercise the exact
+> path below against a real Postgres on your machine. See
+> [Run against a real Postgres](../README.md#run-against-a-real-postgres).
 
 **This is the step that separates a deployed demo from a working tenant.**
 Without it the app serves core's seeded fixtures — every tenant showing identical
