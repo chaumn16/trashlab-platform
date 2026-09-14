@@ -37,157 +37,174 @@ docs/                        architecture, platform + tenant deploys, rollout ru
 
 ---
 
-## Local setup
+## Run everything locally
 
-**Requirements:** Node ≥ 20 (tested on 26), npm ≥ 10. No database needed — the
-sample runs against an in-memory store.
+Three apps: the control plane (what sales uses) and two tenant apps. All three
+run side by side on pinned ports.
+
+**Requirements:** Node ≥ 22.6 (tested on 26), npm ≥ 10. No database, no registry
+credentials, no Vercel account.
+
+### 1. Install
 
 ```bash
 git clone https://github.com/chaumn16/trashlab-platform.git
 cd trashlab-platform
 npm install
+```
+
+### 2. Build core
+
+```bash
 npm run build -w @trashlab/core
 ```
 
-`npm run build -w @trashlab/core` is required before anything else — the tenant
-apps import core's compiled output from `packages/core/dist`.
+Required before running either tenant — they import core's compiled output. Skip
+it and you get `Module not found: Can't resolve '@trashlab/core/app'`. Re-run it
+after any change to `packages/core/src`.
 
-### Run a tenant locally
+Not needed for the control plane, which doesn't depend on core.
 
-A tenant lives in one of two places, and setup differs:
+### 3. Run the apps
 
-| | **Mode A — own repo** | **Mode B — in this monorepo** |
+| App | Command | URL |
 |---|---|---|
-| Lives at | `chaumn16/tenant-globex` | `tenants/<slug>` |
-| Gets core from | npm, pinned | workspace symlink to `packages/core` |
-| Needs a registry token | yes (or `link:core`) | no |
-| Who it's for | every production tenant | core development, demos |
+| Control plane | `npm run dev -w @trashlab/control-plane` | <http://localhost:3002> |
+| Globex (customized tenant) | `npm run dev -w tenant-globex` | <http://localhost:3000> |
+| Acme (config-only tenant) | `npm run dev -w tenant-acme` | <http://localhost:3001> |
 
-#### Mode B — a tenant in this repo (no separate clone)
+Each in its own terminal. Ports are pinned per package so they don't collide.
 
-Nothing extra to set up. `npm install` at the root symlinks
-`node_modules/@trashlab/core → packages/core`, so tenants pick up your core
-changes with no publish step:
-
-```bash
-npm run build -w @trashlab/core     # rebuild after editing core
-npm run dev -w tenant-globex        # http://localhost:3000
-npm run dev -w tenant-acme          # http://localhost:3001
-```
-
-This is the loop for working on core: edit `packages/core/src`, rebuild, refresh.
-
-#### Mode A — a tenant with its own repo
-
-```bash
-git clone https://github.com/chaumn16/tenant-globex.git
-cd tenant-globex
-export CORE_REGISTRY_TOKEN=<github token with read:packages>
-npm install
-npm run dev
-```
-
-`.npmrc` points `@trashlab` at GitHub Packages and reads that token. Without it,
-`npm install` fails with a 401 on `@trashlab/core`.
-
-**No token, or testing an unpublished core?** Point the tenant at a local
-checkout instead — clone this repo as a sibling directory, then:
-
-```bash
-npm run link:core     # repoints @trashlab/core at ../trashlab-platform/packages/core
-npm run dev
-npm run unlink:core   # restore the pinned version when done
-```
-
-Never commit a lockfile produced while linked — it encodes a local filesystem
-path.
-
-### Compare the two tenants
-
-Open `/jobs/job_1003` on both. Same core version, different businesses:
-
-| | Acme (config only) | Globex (custom) |
-|---|---|---|
-| Pricing | core rate card → **$569.00** | weight brackets + disposal + fuel → **$810.90** |
-| Nav | core routes | adds **Manifests** |
-| Job detail | core only | EPA manifest panel via slot |
-| Core version | 4.2.3 | 4.2.3 |
-
-Globex's entire divergence is four files: a pricing hook, a validation hook, two
-slot renderers, one custom route. Neither app is a fork.
-
-### Create a new tenant locally
-
-```bash
-node packages/cli/bin/platform.mjs tenant add northwind --name="Northwind Disposal" --apply
-```
-
-Scaffolds `tenants/northwind` from the template as a Mode B tenant. Give it a
-repo later with the promotion steps in
-[docs/VERCEL.md §10](docs/VERCEL.md#10-promoting-a-monorepo-tenant-to-its-own-repo).
-
-### Run the control plane
-
-The fleet dashboard, the **Add-tenant form sales uses**, and the API every
-tenant's CI reports to:
+The control plane needs a token before its API will answer — auth fails closed,
+so an unset token returns `503` on every route rather than leaving it open:
 
 ```bash
 cp apps/control-plane/.env.example apps/control-plane/.env.local
-# set CONTROL_PLANE_TOKEN to anything for local dev
-npm run dev -w @trashlab/control-plane     # http://localhost:3002
 ```
 
-The control plane does **not** depend on `@trashlab/core`, so you can skip the
-core build if it's the only thing you're running. Ports are pinned per app
-(control plane 3002, globex 3000, acme 3001) so all three run side by side.
+Set `CONTROL_PLANE_TOKEN` to anything for local work. Leave
+`GITHUB_DISPATCH_TOKEN` blank — tenant requests will then be validated and listed
+but never dispatched, so nothing real gets created.
 
-```bash
-curl -s -H "Authorization: Bearer $TOKEN" localhost:3002/api/tenants
-curl -s -X POST localhost:3002/api/ci-result \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"tenantId":"globex","sha":"abc1234","status":"success"}'
-```
+### 4. What to look at
 
-Auth **fails closed**: with `CONTROL_PLANE_TOKEN` unset every API route returns
-`503`, never an open endpoint.
+**The fleet** — <http://localhost:3002>. Three tenants, and a drift panel
+flagging `initech` stranded on core 3.9.4.
 
-#### How sales adds a tenant
+**How sales onboards a customer** — <http://localhost:3002/tenants/new>. Company
+name, subdomain, plan, region. Leave the subdomain blank to watch it derive one.
+Try `acme` (duplicate) or `admin` (reserved) to see the guardrails. You'll get
+*"Request recorded — not provisioned"*, because no dispatch token is set.
 
-Open <http://localhost:3002/tenants/new> and fill in four fields — company name,
-subdomain, plan, region. That's the whole flow; no engineer, no ticket.
+**Two businesses, one core** — open `/jobs/job_1003` on both tenants:
 
-The console never provisions directly. It validates the request and dispatches
-[`provision-tenant.yml`](.github/workflows/provision-tenant.yml), which runs
-`platform tenant add --apply` with credentials that live in GitHub Actions
-secrets — not in a sales-facing web app. Without `GITHUB_DISPATCH_TOKEN` set,
-requests are validated and listed but nothing is dispatched, which is what you
-want locally.
+| | Acme :3001 | Globex :3000 |
+|---|---|---|
+| Total | **$569.00** | **$810.90** |
+| Strategy | core default rate card v4 | globex: weight-bracket, bracket ≤12,000 lbs |
+| Nav | core routes only | adds **Manifests** |
+| Job detail | core only | EPA manifest panel via slot |
+| Core version | 4.2.3 | 4.2.3 |
 
-### Run the CLI
+Globex's entire divergence is four files. Neither app is a fork.
+
+**The CLI**
 
 ```bash
 platform() { node packages/cli/bin/platform.mjs "$@"; }
 
-platform fleet status                                        # fleet + version drift
-platform tenant add northwind --name="Northwind Disposal"     # provision (dry run)
-platform fleet rollout --to=4.3.0 --batch=50                  # staged rollout (dry run)
+platform fleet status                                       # versions, drift, health
+platform tenant add northwind --name="Northwind Disposal"   # provision (dry run)
+platform fleet rollout --to=4.3.0 --batch=50                # staged rollout (dry run)
 ```
 
-**Every command is dry-run by default** and prints the exact Vercel and GitHub
-API calls it would make. Add `--apply` to execute. That default is what makes
-`tenant add` safe to hand to a sales engineer.
+Dry-run by default; every command prints the exact Vercel and GitHub calls it
+would make. `--apply` executes.
 
-### Verify a change to core
+### 5. Verify a change to core
 
 ```bash
 npm run build -w @trashlab/core
-npm test -w tenant-globex     # conformance suite
-npm run lint -w tenant-globex # import boundary
+npm test -w tenant-globex        # conformance suite
+npm run lint -w tenant-globex    # import boundary
 ```
 
 Try breaking the contract in `tenants/globex/extensions/pricing.ts` — read the
 clock, return fractional cents, let line items disagree with the total — and the
 conformance suite names the exact rule you broke.
+
+### Running a tenant that has its own repo
+
+Production tenants live in their own repos. `tenant-globex` is the same tenant in
+that form:
+
+```bash
+git clone https://github.com/chaumn16/tenant-globex.git
+cd tenant-globex
+npm install        # no token needed — core is vendored, see below
+npm run dev
+```
+
+It defaults to port 3000, so if the monorepo copy is already running Next will
+pick another port automatically.
+
+To test an unpublished core against it, clone this repo as a sibling directory
+and:
+
+```bash
+npm run link:core      # point at ../trashlab-platform/packages/core
+npm run dev
+npm run unlink:core    # restore the vendored tarball
+```
+
+Never commit a lockfile produced while linked — it encodes a local path.
+
+### Notes
+
+- **State resets on restart.** The control plane's provisioning requests and
+  events live in memory (`apps/control-plane/lib/registry.ts` marks the swap
+  point), and tenant data is a seeded in-memory store
+  (`packages/core/src/db/store.ts`).
+- **No login anywhere.** Fine locally; the first thing to fix before deploying
+  the control plane.
+- **`initech` has no code.** It exists only as a registry row to demonstrate
+  version drift. There is nothing to run.
+
+---
+
+## How core reaches a tenant
+
+**There is no package registry.** Not public, not private, none.
+
+`@trashlab/core` is built into a 15KB tarball and **committed into each tenant
+repo at `vendor/`**. `package.json` points at it with
+`"@trashlab/core": "file:vendor/trashlab-core-4.2.3.tgz"`.
+
+```bash
+npm run pack -w @trashlab/core     # → dist-releases/trashlab-core-<version>.tgz
+```
+
+Why this rather than a registry:
+
+- **A tenant repo needs zero platform credentials.** Clone, `npm install`,
+  `npm run dev`. No `.npmrc`, no token, nothing to leak or rotate. That matters
+  most for the direction where customers work in their own repos.
+- **CI can't 401 or rate-limit.** At ~2,000 installs per core release, an install
+  step that depends on a registry being up is a fleet-wide outage waiting to
+  happen.
+- **The exact bytes are visible in the repo and in every diff**, and
+  `package-lock.json` still records a sha512 integrity hash, so tampering is
+  still detectable.
+- **Rollback is a file swap.**
+
+The canonical artifact for a release is the GitHub Release asset on this repo.
+The fleet controller downloads it and commits it into tenant repos, replacing the
+old one, in the same PR that updates `package.json` and `tenant.lock` — so
+`git log` on a tenant repo is an honest record of which bytes ran when. `vendor/`
+is CODEOWNERS-protected; agents cannot change their own core version.
+
+Channels (`canary` / `beta` / `stable`) live in `registry/tenants.json` — see
+[docs/RUNBOOK-rollout.md](docs/RUNBOOK-rollout.md).
 
 ---
 
@@ -196,7 +213,7 @@ conformance suite names the exact rule you broke.
 Deploy in this order. Tenants depend on all three platform pieces existing.
 
 ```
-1. publish @trashlab/core      → tenants have something to install
+1. release @trashlab/core      → tenants have something to vendor
 2. deploy the control plane    → tenants have somewhere to report
 3. distribute the CLI          → engineers can provision
 4. then: platform tenant add
@@ -204,13 +221,13 @@ Deploy in this order. Tenants depend on all three platform pieces existing.
 
 ### Step 1–3: the platform → **[docs/DEPLOY-PLATFORM.md](docs/DEPLOY-PLATFORM.md)**
 
-Publishing core (and how dist-tags implement the release channels), deploying
-the control plane to Vercel, and the three things that must change before it
-carries real traffic.
+Releasing core as a tarball (no registry anywhere), deploying the control plane
+to Vercel, and the things that must change before it carries real traffic.
 
-Core is never deployed anywhere — it is *published*, and reaches production only
-when a tenant's build installs it. That indirection is what makes staged
-rollouts possible.
+Core is never deployed anywhere and never published to a registry — it is built,
+released as an artifact, and vendored into tenant repos. It reaches production
+only when a tenant whose tarball was swapped is deployed. That indirection is
+what makes staged rollouts possible.
 
 Shared infrastructure you need once:
 

@@ -8,10 +8,12 @@
     "build": "next build",
     "start": "next start",
     "test": "tsc --noEmit && node --experimental-strip-types --test tests/*.test.ts",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "link:core": "npm pkg set dependencies.@trashlab/core=\"file:../trashlab-platform/packages/core\" && npm install",
+    "unlink:core": "npm pkg set dependencies.@trashlab/core=\"file:vendor/trashlab-core-4.2.3.tgz\" && npm install"
   },
   "dependencies": {
-    "@trashlab/core": "4.2.3",
+    "@trashlab/core": "file:vendor/trashlab-core-4.2.3.tgz",
     "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

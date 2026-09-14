@@ -176,7 +176,6 @@ cannot reach another tenant.
 |---|---|
 | `VERCEL_TOKEN` | one Vercel project |
 | `DATABASE_URL` | one Postgres database |
-| `CORE_REGISTRY_TOKEN` | read-only, `@trashlab` packages |
 | `CONTROL_PLANE_TOKEN` | write CI/deploy status for this tenant only |
 
 Repo variables: `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `CONTROL_PLANE_URL`.

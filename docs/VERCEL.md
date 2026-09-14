@@ -128,27 +128,16 @@ guess:
 later. The conformance suite runs TypeScript directly via node's type stripping,
 which needs ≥ 22.6.
 
-**Private registry access — Path A only.** `@trashlab/core` installs from GitHub
-Packages. The repo's `.npmrc` already reads a token from the environment:
-
-```
-@trashlab:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${CORE_REGISTRY_TOKEN}
-```
-
-So the install works as soon as `CORE_REGISTRY_TOKEN` exists as an environment
-variable (next step). Without it the build fails at `npm install` with a 401 on
-`@trashlab/core`.
-
-Path B needs none of this: core resolves through the workspace symlink, so the
-package is never fetched from a registry at all.
+**No registry credentials — on either path.** `@trashlab/core` is not published
+anywhere. On Path A it is a tarball committed to the tenant repo at `vendor/`; on
+Path B it resolves through the npm workspace symlink. Either way `npm install`
+needs no token and cannot 401, rate-limit, or depend on a registry being up.
 
 ---
 
 ## 3. Environment variables
 
 ```bash
-vercel env add CORE_REGISTRY_TOKEN production    # GitHub PAT with read:packages
 vercel env add TENANT_ID production              # e.g. globex
 vercel env add DATABASE_URL production           # once the store is real
 ```
@@ -156,13 +145,11 @@ vercel env add DATABASE_URL production           # once the store is real
 Add them to `preview` too if you want PR previews to build:
 
 ```bash
-vercel env add CORE_REGISTRY_TOKEN preview
 vercel env add TENANT_ID preview
 ```
 
 | Variable | Scope | Purpose |
 |---|---|---|
-| `CORE_REGISTRY_TOKEN` | production + preview | install `@trashlab/core` — **Path A only**; Path B resolves core through the workspace and needs no token |
 | `TENANT_ID` | production + preview | tags logs and metrics by tenant |
 | `DATABASE_URL` | production | this tenant's Postgres — **only this tenant's** |
 
@@ -219,7 +206,6 @@ secrets and variables:
 
 ```bash
 gh secret set VERCEL_TOKEN          # Account Settings → Tokens, scoped to the team
-gh secret set CORE_REGISTRY_TOKEN
 gh secret set DATABASE_URL
 gh secret set CONTROL_PLANE_TOKEN
 gh variable set VERCEL_ORG_ID       --body "team_xxxxxxxx"
@@ -313,14 +299,15 @@ rm -rf node_modules .next
 
 Three things change, because the workspace symlink is gone:
 
-**1. Core becomes a real dependency.** It already reads `"@trashlab/core": "4.2.3"`
-in `package.json` — that pin was resolved by the workspace locally and now
-resolves from the registry. Add an `.npmrc` so npm knows where to look:
+**1. Core becomes a vendored tarball.** In the monorepo it resolved through the
+workspace symlink; standalone it needs the actual bytes:
 
+```bash
+cp ../trashlab-platform/dist-releases/trashlab-core-4.2.3.tgz vendor/
+npm pkg set dependencies.@trashlab/core="file:vendor/trashlab-core-4.2.3.tgz"
 ```
-@trashlab:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${CORE_REGISTRY_TOKEN}
-```
+
+No `.npmrc` and no token — that is the point of vendoring.
 
 **2. Add a `.gitignore`** — it was inherited from the monorepo root:
 
@@ -364,9 +351,8 @@ platform tenant customize acme --apply
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `npm install` 401 on `@trashlab/core` | `CORE_REGISTRY_TOKEN` missing or lacks `read:packages` | `vercel env add CORE_REGISTRY_TOKEN production`, redeploy |
 | `Module not found: @trashlab/core` | **Path B**: Root Directory set but files outside it excluded | turn on "Include source files outside of the Root Directory" |
-| `Module not found: @trashlab/core` | **Path A**: no `.npmrc`, or core not published | add `.npmrc`, or `npm run link:core` for local work |
+| `Module not found: @trashlab/core` | **Path A**: `vendor/*.tgz` missing or `package.json` points at the wrong filename | restore the tarball, or `npm run link:core` for local work |
 | Every tenant rebuilds on any push | **Path B** with no path filter | set Ignored Build Step (§ Path B) |
 | Tenant deploys but shows another tenant's branding | Root Directory points at the wrong `tenants/<slug>` | fix Root Directory, redeploy |
 | Build fails on `.ts` imports in tests | Node < 22.6 | Project Settings → Node.js Version → 22.x |

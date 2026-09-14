@@ -5,3 +5,6 @@ dist/
 .env
 .env.local
 *.tsbuildinfo
+
+# Built core tarballs (staging only; releases live on GitHub Releases)
+dist-releases/*.tgz

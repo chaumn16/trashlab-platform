@@ -1,29 +1,26 @@
 name: Release core
 
-# Publishes @trashlab/core to GitHub Packages on any pushed v* tag.
+# Builds @trashlab/core into a tarball and attaches it to a GitHub Release.
 #
-# Publishing deploys nothing. Core reaches production only when a tenant's build
-# installs it, and tenant pins are moved by the fleet controller in batches.
-# That indirection is what makes staged rollouts possible — see
-# docs/RUNBOOK-rollout.md.
+# There is no package registry. Nothing is published anywhere public or private;
+# the release asset is the canonical artifact, and the copy that actually runs is
+# the one the fleet controller vendors into each tenant repo at vendor/.
+#
+# Cutting a release deploys nothing. Core reaches production only when a tenant's
+# vendored tarball is swapped and that tenant is deployed — which is what makes
+# staged rollouts possible. See docs/RUNBOOK-rollout.md.
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      dist_tag:
-        description: "npm dist-tag to publish under (canary, beta, stable)"
-        required: true
-        default: canary
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
-      packages: write
+      contents: write   # to create the Release and upload the asset
     steps:
       - uses: actions/checkout@v4
 
@@ -31,26 +28,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          registry-url: https://npm.pkg.github.com
-          scope: "@trashlab"
 
       - name: Install
         run: npm ci
-
-      # A published package with no dist/ installs cleanly and then fails at
-      # import time in every tenant that picks it up. Build before publish,
-      # always.
-      - name: Build
-        run: npm run build -w @trashlab/core
-
-      # The contract tests run against the demo tenants before anything is
-      # published. If core breaks its own extension contract, no tenant should
-      # ever see the release.
-      - name: Conformance (demo tenants)
-        run: |
-          for t in acme globex; do
-            ( cd "tenants/$t" && node --test tests/*.test.ts )
-          done
 
       - name: Verify tag matches package version
         if: startsWith(github.ref, 'refs/tags/v')
@@ -63,24 +43,56 @@ jobs:
             exit 1
           fi
 
-      - name: Publish
-        run: npm publish -w @trashlab/core --tag "${DIST_TAG:-canary}"
+      # The contract tests run against the demo tenants before anything is
+      # released. If core breaks its own extension contract, no tenant should
+      # ever be offered the build.
+      - name: Conformance (demo tenants)
+        run: |
+          npm run build -w @trashlab/core
+          for t in acme globex; do
+            ( cd "tenants/$t" && node --test tests/*.test.ts )
+          done
+
+      - name: Pack
+        id: pack
+        run: |
+          npm run pack -w @trashlab/core
+          VERSION=$(node -p "require('./packages/core/package.json').version")
+          FILE="dist-releases/trashlab-core-$VERSION.tgz"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "file=$FILE"       >> "$GITHUB_OUTPUT"
+          echo "sha256=$(shasum -a 256 "$FILE" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          ls -lh "$FILE"
+
+      - name: Publish GitHub Release
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DIST_TAG: ${{ github.event.inputs.dist_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          V: ${{ steps.pack.outputs.version }}
+          FILE: ${{ steps.pack.outputs.file }}
+          SHA: ${{ steps.pack.outputs.sha256 }}
+        run: |
+          gh release create "v$V" "$FILE" \
+            --title "core v$V" \
+            --notes "\`@trashlab/core@$V\`
+
+          sha256: \`$SHA\`
+
+          Not published to any registry. Roll it out with:
+
+          \`\`\`
+          platform fleet rollout --to=$V --channel=canary --apply
+          \`\`\`
+          " || gh release upload "v$V" "$FILE" --clobber
 
       - name: Summary
         run: |
-          VERSION=$(node -p "require('./packages/core/package.json').version")
           {
-            echo "### Published \`@trashlab/core@$VERSION\`"
+            echo "### Released core v${{ steps.pack.outputs.version }}"
             echo ""
-            echo "dist-tag: \`${DIST_TAG:-canary}\`"
+            echo "sha256: \`${{ steps.pack.outputs.sha256 }}\`"
             echo ""
             echo "No tenant is affected yet. Roll it out with:"
             echo '```'
-            echo "platform fleet rollout --to=$VERSION --channel=canary --apply"
+            echo "platform fleet rollout --to=${{ steps.pack.outputs.version }} --channel=canary --apply"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-        env:
-          DIST_TAG: ${{ github.event.inputs.dist_tag }}

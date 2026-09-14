@@ -13,19 +13,20 @@ Three deployable units, and only one is a web app:
 
 | Unit | What it is | How it ships | Where it runs |
 |---|---|---|---|
-| `@trashlab/core` | npm **package** | `npm publish` to GitHub Packages | inside each tenant's build |
+| `@trashlab/core` | built **tarball** | GitHub Release → vendored into each tenant repo | inside each tenant's build |
 | `@trashlab/control-plane` | Next.js **service** | Vercel project | `control.trashlab.app` |
 | `@trashlab/cli` | **CLI** | run from the repo or `npm i -g` | engineer laptops + CI |
 
-Core is never "deployed" anywhere. It is published, and it reaches production
-only when a tenant's build installs it. That indirection is the whole point:
-publishing core changes nothing until a tenant is deployed, which is what makes
-staged rollouts possible.
+Core is never "deployed" anywhere, and never published to a registry. It is
+built, released as an artifact, and vendored into tenant repos. It reaches
+production only when a tenant whose `vendor/` tarball was swapped is deployed.
+That indirection is the whole point: cutting a release changes nothing until a
+tenant is deployed, which is what makes staged rollouts possible.
 
 **Order of operations:**
 
 ```
-1. publish @trashlab/core      → tenants have something to install
+1. release @trashlab/core      → tenants have something to vendor
 2. deploy the control plane    → tenants have somewhere to report
 3. distribute the CLI          → engineers can provision
 4. then: platform tenant add
@@ -33,62 +34,59 @@ staged rollouts possible.
 
 ---
 
-## 1. Publish `@trashlab/core`
+## 1. Release `@trashlab/core`
 
-### One-time registry setup
-
-The package is scoped `@trashlab` and published to GitHub Packages. Authenticate
-with a PAT carrying `write:packages`:
-
-```bash
-npm config set @trashlab:registry https://npm.pkg.github.com
-npm config set //npm.pkg.github.com/:_authToken $GITHUB_TOKEN
-```
+**There is no package registry.** Core is built into a tarball, attached to a
+GitHub Release, and vendored into each tenant repo at `vendor/`. Nothing is
+published anywhere.
 
 ### Cut a release
 
 ```bash
-cd packages/core
-npm run build                  # tsc → dist/ ; publishing an unbuilt package ships nothing
-npm version minor              # 4.2.3 → 4.3.0
-npm publish
+npm run pack -w @trashlab/core      # builds, then packs → dist-releases/
+```
+
+That produces `dist-releases/trashlab-core-<version>.tgz` (~15KB). To release it:
+
+```bash
+cd packages/core && npm version minor    # 4.2.3 → 4.3.0
 git push --follow-tags
 ```
 
-`files: ["dist"]` in `package.json` means only compiled output is published —
+Pushing the tag runs
+[`.github/workflows/release.yml`](../.github/workflows/release.yml), which
+rebuilds, runs the demo tenants' conformance suites, packs, and attaches the
+tarball to a GitHub Release. If core breaks its own extension contract, no tenant
+is ever offered the build.
+
+`files: ["dist"]` in `package.json` means only compiled output is packed —
 tenants never receive core's TypeScript sources, which is what keeps
 `src/extend/types.ts` the contract rather than the whole source tree.
 
-### Channels are dist-tags
+### Cutting a release deploys nothing
 
-This is the mechanism behind `canary` / `beta` / `stable`:
-
-```bash
-npm publish --tag canary                        # new releases land on canary first
-npm dist-tag add @trashlab/core@4.3.0 beta      # promote
-npm dist-tag add @trashlab/core@4.3.0 stable    # promote again
-npm dist-tag ls @trashlab/core                  # what each channel points at
-```
-
-Promoting a dist-tag deploys nothing on its own. The fleet controller reads the
-tags and moves tenant pins in batches — see
-[RUNBOOK-rollout.md](RUNBOOK-rollout.md).
-
-### Automated releases
-
-[`.github/workflows/release.yml`](../.github/workflows/release.yml) publishes on
-any pushed `v*` tag, so the manual path above is only needed for the first
-release and for emergencies:
+The release asset is inert until the fleet controller vendors it into a tenant
+repo and that tenant deploys. That indirection is what makes staged rollouts
+possible:
 
 ```bash
-git tag v4.3.0 && git push --tags
+platform fleet rollout --to=4.3.0 --channel=canary --apply
 ```
+
+For each tenant in the batch this swaps `vendor/*.tgz`, repoints
+`package.json`, and updates `tenant.lock` in one commit — so `git log` on a
+tenant repo is an honest record of which bytes ran when.
+
+Channels (`canary` / `beta` / `stable`) live in the registry
+(`registry/tenants.json`), not in npm dist-tags. Promotion is a registry change
+plus a rollout, never a tag move.
 
 ### Verify
 
 ```bash
-npm view @trashlab/core versions
-npm view @trashlab/core dist-tags
+gh release list --repo chaumn16/trashlab-platform
+shasum -a 256 dist-releases/trashlab-core-4.3.0.tgz
+platform fleet status                      # who is on what
 ```
 
 ---

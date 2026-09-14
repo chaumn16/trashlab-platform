@@ -30,8 +30,8 @@ flowchart TB
         TPL["tenant-starter template"]
     end
 
-    PKG[["GitHub Packages<br/>@trashlab/core@4.2.3"]]
-    CORE -->|npm publish| PKG
+    PKG[["GitHub Release asset<br/>trashlab-core-4.2.3.tgz<br/><i>no registry</i>"]]
+    CORE -->|npm pack| PKG
 
     subgraph TENANTS["Tenant repos — one per customer"]
         direction LR
@@ -40,7 +40,7 @@ flowchart TB
         R3["tenant-…<br/>× 2,000"]
     end
 
-    PKG -.->|pinned dependency| R1 & R2 & R3
+    PKG -.->|vendored into vendor/| R1 & R2 & R3
     TPL -->|scaffolds| TENANTS
     CLI -->|provision · bump · deploy| TENANTS
 
@@ -68,7 +68,7 @@ structurally impossible rather than a code-review responsibility.
 
 | Layer | Choice | Why |
 |---|---|---|
-| **Code** | Shared core as a semver'd package + per-tenant repo | One place to fix bugs; divergence contained in small reviewable surfaces |
+| **Code** | Shared core as a semver'd tarball, vendored per-tenant repo | One place to fix bugs; divergence contained in small reviewable surfaces; tenant repos need zero platform credentials |
 | **Runtime** | Dedicated Vercel project per tenant | Blast radius, per-tenant rollback, required once core logic actually differs |
 | **Data** | Dedicated Postgres per tenant | Tenants on different core versions can't share a schema |
 
@@ -272,8 +272,9 @@ are *shrinking*, not by how many exist.
 
 ## 7. Versioning and rollout
 
-- **The pin is a lockfile** — exact version in `package.json`, reproducible
-  builds, per-tenant rollback.
+- **The pin is the vendored tarball** — the exact bytes live in the tenant repo
+  at `vendor/`, referenced by `package.json` as a `file:` dependency.
+  Reproducible, credential-free, and rollback is a file swap.
 - **The channel is a policy** — how fast the fleet controller may move that pin.
 
 Tenants don't move pins; the controller does. A `pinned` tenant must carry an
@@ -282,7 +283,7 @@ support.
 
 ```mermaid
 flowchart TB
-    PUB["npm publish @trashlab/core@4.3.0"] --> CAN["canary<br/><i>internal + ~5 friendly tenants</i>"]
+    PUB["release core 4.3.0<br/><i>tarball, no registry</i>"] --> CAN["canary<br/><i>internal + ~5 friendly tenants</i>"]
     CAN --> GATE1{"health gate<br/>30 min"}
     GATE1 -->|breach| HALT["⛔ halt rollout<br/><i>deployed batches stay up</i>"]
     GATE1 -->|pass| BETA["beta — 5% batches"]

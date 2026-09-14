@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { cpSync, existsSync, readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, rmSync, copyFileSync } from "node:fs";
 import { join } from "node:path";
 import * as reg from "../lib/registry.mjs";
 import { c, table, step, health } from "../lib/ui.mjs";
@@ -146,6 +146,7 @@ function scaffold(t) {
     return;
   }
   cpSync(reg.paths.TEMPLATE, dest, { recursive: true });
+  vendorCore(dest, t.coreVersion ?? reg.load().coreChannels.stable);
   for (const file of walk(dest)) {
     const text = readFileSync(file, "utf8");
     const next = text
@@ -155,6 +156,23 @@ function scaffold(t) {
     if (next !== text) writeFileSync(file, next);
   }
   console.log(c.dim(`        wrote tenants/${t.id}`));
+}
+
+/** Put the built core tarball into a freshly scaffolded tenant. */
+function vendorCore(dest, version) {
+  const tarball = `trashlab-core-${version}.tgz`;
+  const src = join(reg.paths.ROOT, "dist-releases", tarball);
+  const vendorDir = join(dest, "vendor");
+  mkdirSync(vendorDir, { recursive: true });
+  for (const f of readdirSync(vendorDir)) {
+    if (f.endsWith(".tgz")) rmSync(join(vendorDir, f));
+  }
+  if (!existsSync(src)) {
+    console.log(c.yellow(`        ⚠ dist-releases/${tarball} missing — run: npm run pack -w @trashlab/core`));
+    return;
+  }
+  copyFileSync(src, join(vendorDir, tarball));
+  console.log(c.dim(`        vendored ${tarball} (no registry involved)`));
 }
 
 function* walk(dir) {
@@ -188,20 +206,61 @@ async function tenantDeploy([slug]) {
   console.log(`\n${c.green("✓")} ${t.domain} deployed on core ${target}\n`);
 }
 
+/**
+ * Move a tenant to a different core version.
+ *
+ * Core is not published to any registry — the tenant repo carries the built
+ * tarball in vendor/. So a version bump is three coordinated edits: swap the
+ * tarball, repoint package.json at it, and update tenant.lock. Doing all three
+ * in one commit is what makes `git log` on a tenant repo an honest record of
+ * which bytes ran when.
+ */
 function bumpPin(t, version) {
-  const pkg = join(reg.paths.TENANTS, t.id, "package.json");
-  const lock = join(reg.paths.TENANTS, t.id, "tenant.lock");
-  if (!existsSync(pkg)) return console.log(c.dim("        local repo not checked out — the fleet controller edits the remote"));
-  if (!flags.apply) return console.log(c.dim(`        set @trashlab/core=${version} in package.json + tenant.lock  (dry-run)`));
+  const dir = join(reg.paths.TENANTS, t.id);
+  const pkg = join(dir, "package.json");
+  const lock = join(dir, "tenant.lock");
+  if (!existsSync(pkg)) {
+    return console.log(c.dim("        local repo not checked out — the fleet controller edits the remote"));
+  }
+
+  const tarball = `trashlab-core-${version}.tgz`;
+  const src = join(reg.paths.ROOT, "dist-releases", tarball);
+  const relDep = `file:vendor/${tarball}`;
+
+  if (!flags.apply) {
+    console.log(c.dim(`        vendor/${tarball} + package.json + tenant.lock  (dry-run)`));
+    return;
+  }
+
+  if (!existsSync(src)) {
+    throw new Error(
+      `No built tarball at dist-releases/${tarball}.\n` +
+        `  Build it first:  npm run pack -w @trashlab/core\n` +
+        `  Or download the GitHub Release asset for v${version}.`
+    );
+  }
+
+  // Replace, don't accumulate: a tenant repo carries exactly one core tarball,
+  // so the version that is present is unambiguously the version that runs.
+  const vendorDir = join(dir, "vendor");
+  mkdirSync(vendorDir, { recursive: true });
+  for (const f of readdirSync(vendorDir)) {
+    if (f.endsWith(".tgz")) rmSync(join(vendorDir, f));
+  }
+  copyFileSync(src, join(vendorDir, tarball));
 
   const p = JSON.parse(readFileSync(pkg, "utf8"));
-  p.dependencies["@trashlab/core"] = version;
+  p.dependencies["@trashlab/core"] = relDep;
+  if (p.scripts?.["unlink:core"]) {
+    p.scripts["unlink:core"] = `npm pkg set dependencies.@trashlab/core="${relDep}" && npm install`;
+  }
   writeFileSync(pkg, JSON.stringify(p, null, 2) + "\n");
 
   const l = JSON.parse(readFileSync(lock, "utf8"));
   l.coreVersion = version;
   writeFileSync(lock, JSON.stringify(l, null, 2) + "\n");
-  console.log(c.dim(`        pinned @trashlab/core=${version}`));
+
+  console.log(c.dim(`        vendored ${tarball} and repointed package.json`));
 }
 
 // --- tenant customize ------------------------------------------------------

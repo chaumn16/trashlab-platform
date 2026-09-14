@@ -3,7 +3,7 @@
 ## Normal release
 
 ```bash
-npm version minor -w @trashlab/core && npm publish -w @trashlab/core
+cd packages/core && npm version minor && git push --follow-tags   # CI packs + releases
 platform fleet rollout --to=4.3.0 --channel=canary --apply    # internal + ~5 friendly tenants
 platform fleet rollout --to=4.3.0 --channel=beta   --batch=5%  --apply
 platform fleet rollout --to=4.3.0 --channel=stable --batch=10% --apply

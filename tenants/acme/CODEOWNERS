@@ -11,6 +11,7 @@
 /.github/               @trashlab/platform-team
 /package.json           @trashlab/platform-team
 /package-lock.json      @trashlab/platform-team
+/vendor/                @trashlab/platform-team
 /CODEOWNERS             @trashlab/platform-team
 /next.config.mjs        @trashlab/platform-team
 

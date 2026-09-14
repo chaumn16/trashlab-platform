@@ -31,13 +31,13 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          registry-url: https://npm.pkg.github.com
-          scope: "@trashlab"
 
+      # No registry auth. @trashlab/core is a tarball committed to this repo at
+      # vendor/, so install needs no token and cannot 401, rate-limit, or depend
+      # on a registry being up. The fleet controller swaps that tarball when it
+      # moves this tenant's core version.
       - name: Install
         run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.CORE_REGISTRY_TOKEN }}
 
       # Forward-only, runs before the new build takes traffic. Core migrations
       # are expand/contract so a rollback to the previous build stays compatible
