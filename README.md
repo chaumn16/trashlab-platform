@@ -6,13 +6,16 @@ One versioned core package (`@trashlab/core`), one thin repo per tenant that
 imports it, one Vercel project and one Postgres database per tenant, and a
 control plane that provisions and rolls out across the fleet.
 
-📐 **[Architecture & diagrams](docs/ARCHITECTURE.md)** · ▲ **[Deploy to Vercel](docs/VERCEL.md)** · 🚀 **[Deploy runbook](docs/DEPLOY.md)** · 🔄 **[Fleet rollouts](docs/RUNBOOK-rollout.md)**
+📐 **[Architecture & diagrams](docs/ARCHITECTURE.md)**
+🏗 **[Deploy the platform](docs/DEPLOY-PLATFORM.md)** — publish core, deploy the control plane (**start here**)
+▲ **[Deploy a tenant to Vercel](docs/VERCEL.md)** · 🚀 **[Tenant runbook](docs/DEPLOY.md)** · 🔄 **[Fleet rollouts](docs/RUNBOOK-rollout.md)**
 
 ---
 
 ## Repository layout
 
 ```
+apps/control-plane/          fleet dashboard + the CI/deploy callback API
 packages/core/               @trashlab/core — the product
   src/extend/types.ts        ← the entire public contract tenants may depend on
   src/domain/runtime.ts      ← the guard between core and tenant-authored code
@@ -22,7 +25,7 @@ templates/tenant-starter/    what `platform tenant add` stamps out
 tenants/acme/                in-repo demo tenant (see note below)
 tenants/globex/              in-repo demo tenant with custom business logic
 registry/tenants.json        fleet source of truth
-docs/                        architecture, Vercel setup, deploy, rollout runbooks
+docs/                        architecture, platform + tenant deploys, rollout runbooks
 ```
 
 > **On `tenants/` being in this repo.** In production every tenant is its **own
@@ -70,6 +73,26 @@ slot renderers, one custom route. Neither app is a fork.
 
 ### Run the control plane
 
+The fleet dashboard and the API every tenant's CI reports to:
+
+```bash
+cp apps/control-plane/.env.example apps/control-plane/.env.local
+# set CONTROL_PLANE_TOKEN to anything for local dev
+npm run dev -w @trashlab/control-plane     # http://localhost:3002
+```
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" localhost:3002/api/tenants
+curl -s -X POST localhost:3002/api/ci-result \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"tenantId":"globex","sha":"abc1234","status":"success"}'
+```
+
+Auth **fails closed**: with `CONTROL_PLANE_TOKEN` unset every API route returns
+`503`, never an open endpoint.
+
+### Run the CLI
+
 ```bash
 platform() { node packages/cli/bin/platform.mjs "$@"; }
 
@@ -98,41 +121,52 @@ conformance suite names the exact rule you broke.
 
 ## Production setup
 
-> **Deploying for the first time?** Start with **[docs/VERCEL.md](docs/VERCEL.md)** —
-> step-by-step Vercel setup for a single tenant: link the project, set env vars,
-> deploy, wire up domains and CI. Do it by hand once; `platform tenant add`
-> automates exactly those steps, and you can't debug the automation without
-> having done it yourself.
->
-> The sample deploys with **no database** — the store is in-memory — so you can
-> get a tenant live on Vercel before any Postgres exists.
+Deploy in this order. Tenants depend on all three platform pieces existing.
 
-### One-time platform bootstrap
-
-**1. Publish core to a private registry.**
-
-```bash
-npm version minor -w @trashlab/core
-npm publish -w @trashlab/core --registry=https://npm.pkg.github.com
+```
+1. publish @trashlab/core      → tenants have something to install
+2. deploy the control plane    → tenants have somewhere to report
+3. distribute the CLI          → engineers can provision
+4. then: platform tenant add
 ```
 
-Tenant repos install it with a read-only `CORE_REGISTRY_TOKEN`.
+### Step 1–3: the platform → **[docs/DEPLOY-PLATFORM.md](docs/DEPLOY-PLATFORM.md)**
 
-**2. Provision shared infrastructure.**
+Publishing core (and how dist-tags implement the release channels), deploying
+the control plane to Vercel, and the three things that must change before it
+carries real traffic.
+
+Core is never deployed anywhere — it is *published*, and reaches production only
+when a tenant's build installs it. That indirection is what makes staged
+rollouts possible.
+
+Shared infrastructure you need once:
 
 | Resource | Purpose |
 |---|---|
 | Vercel team (Enterprise) | 2,000 projects needs an Enterprise agreement |
 | Wildcard DNS `*.trashlab.app` | per-tenant subdomains |
 | GitHub org + `platform-team` | CODEOWNERS reviews, repo creation |
-| Control-plane service | tenant registry, CI/deploy callbacks |
+| Control-plane deployment | tenant registry, CI/deploy callbacks |
 
-**3. Export credentials for the CLI.**
+### Step 4: the first tenant → **[docs/VERCEL.md](docs/VERCEL.md)**
+
+Step-by-step Vercel setup for a single tenant: link the project, set env vars,
+deploy, wire up domains and CI. Do it by hand once — `platform tenant add`
+automates exactly those steps, and you can't debug the automation without having
+done it yourself.
+
+The sample deploys with **no database** — the store is in-memory — so you can get
+a tenant live before any Postgres exists.
+
+### Credentials for the CLI
 
 ```bash
 export VERCEL_TOKEN=...      # project + domain + deployment scope
 export VERCEL_TEAM_ID=...
 export GITHUB_TOKEN=...      # repo creation + branch protection
+export CONTROL_PLANE_URL=https://control.trashlab.app
+export CONTROL_PLANE_TOKEN=...
 ```
 
 > **Settle Vercel capacity before ~400 tenants.** Project count needs an
@@ -224,5 +258,9 @@ command surface or the architecture:
 - **Data layer is in-memory.** `packages/core/src/db/store.ts` marks the Postgres
   swap point; production is one database per tenant, where isolation comes from
   the connection string rather than a `WHERE` clause.
-- **Control plane is a JSON registry** (`registry/tenants.json`) rather than a
-  service.
+- **The control plane's store is not durable.** The service is real and
+  deployable — dashboard, authenticated API, fail-closed tokens — but reads come
+  from a JSON file bundled at build time and writes go to an in-process array
+  that is lost on cold start. `apps/control-plane/lib/registry.ts` marks the swap
+  point. See [DEPLOY-PLATFORM.md](docs/DEPLOY-PLATFORM.md#before-real-traffic)
+  for the full list of what to change before real traffic.

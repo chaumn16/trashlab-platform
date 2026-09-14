@@ -5,8 +5,9 @@ its own Postgres database, running a pinned version of `@trashlab/core`.
 
 There are four procedures. Only the first involves a human decision.
 
-> **First time on Vercel?** This document assumes the platform is already
-> bootstrapped. For the hands-on setup of a single tenant — `vercel link`, env
+> **First time here?** This document assumes the platform is already deployed —
+> core published, control plane live. If it isn't, start with
+> [DEPLOY-PLATFORM.md](DEPLOY-PLATFORM.md). For the hands-on setup of a single tenant — `vercel link`, env
 > vars, the first deploy, domains, CI wiring, and troubleshooting — see
 > **[VERCEL.md](VERCEL.md)**.
 

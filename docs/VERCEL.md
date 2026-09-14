@@ -1,4 +1,8 @@
-# Deploying to Vercel
+# Deploying a tenant to Vercel
+
+> Deploying the **platform** itself — publishing `@trashlab/core` and deploying
+> the control plane — is [DEPLOY-PLATFORM.md](DEPLOY-PLATFORM.md). Do that first;
+> a tenant has nothing to install and nowhere to report until it exists.
 
 Hands-on instructions for standing up a tenant on Vercel — by hand the first
 time, then automated for the remaining 1,999.

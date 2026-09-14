@@ -3,13 +3,17 @@
   "private": true,
   "version": "0.1.0",
   "workspaces": [
+    "apps/*",
     "packages/*",
     "tenants/*"
   ],
   "scripts": {
     "build:core": "npm run build -w @trashlab/core",
     "conformance": "node --test packages/core/dist/conformance/*.test.js",
-    "platform": "node packages/cli/bin/platform.mjs"
+    "platform": "node packages/cli/bin/platform.mjs",
+    "dev:control-plane": "npm run dev -w @trashlab/control-plane"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }
