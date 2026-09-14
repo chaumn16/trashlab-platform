@@ -115,142 +115,28 @@ platform fleet status                      # who is on what
 
 ## 2. Deploy the control plane
 
-A Next.js app serving the fleet dashboard, the Add-tenant form sales uses, and
-the callback API every tenant's CI and deploy workflows post to.
+→ **[DEPLOY-CONTROL-PLANE.md](DEPLOY-CONTROL-PLANE.md)** — the full runbook:
+database, project settings, environment variables, deploy, a five-step
+verification, SSO, and troubleshooting. About 20 minutes.
 
-| Route | Method | Purpose |
-|---|---|---|
-| `/` | GET | fleet dashboard — versions, drift, health, provisioning, events |
-| `/tenants/new` | GET | **the Add-tenant form sales uses** |
-| `/api/tenants` | GET | the registry as data |
-| `/api/tenants` | POST | provision a tenant programmatically (CRM integration) |
-| `/api/ci-result` | POST | tenant CI reports pass/fail per PR |
-| `/api/deploy-result` | POST | tenant deploys report success + URL |
+The short version, and the three things that most often go wrong:
 
-### 2a. Create its database — do this first
+1. **Create its Postgres first.** The control plane has its own database,
+   separate from every tenant's. Without `DATABASE_URL` the app still renders and
+   still answers — it just forgets every write between requests, because
+   serverless instances share no memory.
+2. **Root Directory `apps/control-plane`, and "Include source files outside of
+   the Root Directory" ON** — it imports `registry/tenants.json` from the repo
+   root for its initial seed.
+3. **`CONTROL_PLANE_TOKEN` fails closed.** Unset, every API route returns `503`
+   rather than serving openly. The dashboard still works, which is how you end up
+   with a half-configured deployment that looks healthy.
 
-> Rehearse locally: `npm run db:up`, then
-> `docker exec trashlab-pg createdb -U trashlab control_plane` and run the app
-> with that `DATABASE_URL`. Same migrate-and-seed-on-boot path as production.
+Verify by posting an event to `/api/ci-result` and reloading the dashboard. If it
+is not listed, you are on the in-memory path — every other check passes anyway.
 
-The control plane has its **own** Postgres, separate from every tenant's. It
-holds data *about* tenants (registry, events, provisioning requests), never data
-*belonging to* them.
-
-In the Vercel dashboard: **Storage → Create Database → Postgres**, named
-`control-plane`. Neon works identically; any Postgres will do.
-
-Without `DATABASE_URL` the app still runs — it reads the bundled
-`registry/tenants.json` and keeps writes in memory. That is correct for local
-development and **wrong in production**: serverless instances do not share
-memory, so provisioning requests and CI events would vanish between requests.
-
-Schema and seed are automatic. On first use the app creates its tables and loads
-the bundled registry, so the dashboard is populated on the very first request
-rather than empty.
-
-### 2b. Link and configure the project
-
-```bash
-cd apps/control-plane
-vercel link          # create a project named trashlab-control-plane
-```
-
-**Project Settings → General:**
-
-- **Root Directory** → `apps/control-plane`
-- **Include source files outside of the Root Directory** → **ON**
-- **Node.js Version** → 22.x
-
-That second setting is not optional: the app imports `registry/tenants.json`
-from the repo root for its initial seed. With it off the build fails with
-`Module not found: ../../../registry/tenants.json`.
-
-### 2c. Environment variables
-
-```bash
-openssl rand -hex 32                                  # generate a real token
-vercel env add CONTROL_PLANE_TOKEN production
-vercel env add CONTROL_PLANE_TOKEN preview
-vercel env add DATABASE_URL production                # from step 2a
-vercel env add GITHUB_DISPATCH_TOKEN production       # lets the form start provisioning
-vercel env add PLATFORM_REPO production               # chaumn16/trashlab-platform
-```
-
-**`CONTROL_PLANE_TOKEN` fails closed.** Unset, every API route returns `503` —
-never an open endpoint. The dashboard still renders, which is the most common way
-to get a half-configured deployment that looks fine.
-
-**`GITHUB_DISPATCH_TOKEN` is deliberately weak**: a fine-grained PAT with
-*Contents: read and write* on the platform repo only. It triggers a workflow; it
-does not provision. `VERCEL_TOKEN` and the fleet GitHub token live in GitHub
-Actions secrets and never touch the web app — see [§2e](#2e-the-provisioning-workflow).
-
-### 2d. Deploy and verify
-
-```bash
-vercel --prod
-vercel domains add control.trashlab.app
-```
-
-Run all five checks. Each one catches a different half-configured state:
-
-```bash
-CP=https://control.trashlab.app
-T=<the token you generated>
-
-# 1. dashboard renders
-curl -s -o /dev/null -w "dashboard: %{http_code}\n" $CP/
-
-# 2. auth is enforced (401, NOT 503 — 503 means DATABASE_URL/token missing)
-curl -s -o /dev/null -w "no auth:   %{http_code}\n" $CP/api/tenants
-
-# 3. the fleet reads back from Postgres, not the bundled JSON
-curl -s -H "Authorization: Bearer $T" $CP/api/tenants | head -c 200
-
-# 4. a CI callback persists
-curl -s -X POST $CP/api/ci-result \
-  -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
-  -d '{"tenantId":"globex","sha":"abc1234","status":"success"}'
-
-# 5. it survived — reload the dashboard and the event is listed.
-#    If it is not, DATABASE_URL is unset and you are on the in-memory path.
-```
-
-Check 5 is the one that matters. Everything else can pass on a control plane that
-silently forgets every write.
-
-### 2e. The provisioning workflow
-
-The console does **not** provision. It validates the request and dispatches
-[`.github/workflows/provision-tenant.yml`](../.github/workflows/provision-tenant.yml),
-which runs `platform tenant add --apply`.
-
-1. **Provisioning takes minutes** — repo, database, project, domain, deploy.
-   Serverless functions time out; a workflow does not.
-2. **Blast radius.** `VERCEL_TOKEN` and the fleet GitHub token can create repos
-   and deploy anywhere in the fleet. A sales-facing web app is the wrong place
-   for them.
-3. **Retry and audit for free.** "Who onboarded this customer, and when" is
-   answerable from the Actions history.
-
-```bash
-gh secret   set VERCEL_TOKEN        --repo chaumn16/trashlab-platform
-gh secret   set FLEET_GITHUB_TOKEN  --repo chaumn16/trashlab-platform   # repo + workflow scope
-gh variable set VERCEL_TEAM_ID      --repo chaumn16/trashlab-platform --body "team_xxxx"
-```
-
-The workflow runs `tenant add` as a dry run **first**, then with `--apply`. A bad
-slug or a duplicate fails before anything is created.
-
-### 2f. Put the console behind SSO
-
-`/tenants/new` creates customers and `/` lists every one of them. Neither page is
-token-protected — they are human UI, and a bearer token in a browser is not auth.
-
-Enable **Vercel Authentication** (Project Settings → Deployment Protection) or
-put your own IdP in front. Do this before sharing the URL with anyone, including
-sales.
+Then put it behind SSO before sharing the URL: `/tenants/new` creates customers
+and `/` lists them all, and neither page is token-protected.
 
 ---
 
