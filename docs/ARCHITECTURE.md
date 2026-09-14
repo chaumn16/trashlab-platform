@@ -60,6 +60,10 @@ flowchart TB
     V3 --> D3[("Postgres<br/>…")]
 ```
 
+> The two demo tenants in `tenants/` are the exception: they resolve core through
+> the npm workspace rather than a vendored tarball, so core changes are live
+> while developing. Every real tenant carries the tarball.
+
 **Isolation comes from the connection string, not a `WHERE` clause.** Each Vercel
 project holds only its own `DATABASE_URL`, so cross-tenant leakage is
 structurally impossible rather than a code-review responsibility.

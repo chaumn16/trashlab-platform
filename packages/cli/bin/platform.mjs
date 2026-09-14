@@ -227,6 +227,27 @@ function bumpPin(t, version) {
   const src = join(reg.paths.ROOT, "dist-releases", tarball);
   const relDep = `file:vendor/${tarball}`;
 
+  // Two shapes of tenant, and converting one into the other by accident would
+  // be a nasty surprise:
+  //   • standalone repo  → carries the tarball in vendor/ (`file:` dependency)
+  //   • in this monorepo → resolves core through the npm workspace, so core
+  //     edits are live. acme and globex are core-development fixtures and have
+  //     no vendor/ directory at all.
+  const current = JSON.parse(readFileSync(pkg, "utf8")).dependencies?.["@trashlab/core"] ?? "";
+  const workspaceMode = !current.startsWith("file:vendor/");
+
+  if (workspaceMode) {
+    if (!flags.apply) {
+      console.log(c.dim(`        workspace tenant — tenant.lock only  (dry-run)`));
+      return;
+    }
+    const l = JSON.parse(readFileSync(lock, "utf8"));
+    l.coreVersion = version;
+    writeFileSync(lock, JSON.stringify(l, null, 2) + "\n");
+    console.log(c.dim(`        workspace tenant — recorded ${version} in tenant.lock, dependency untouched`));
+    return;
+  }
+
   if (!flags.apply) {
     console.log(c.dim(`        vendor/${tarball} + package.json + tenant.lock  (dry-run)`));
     return;
