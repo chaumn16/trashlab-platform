@@ -137,6 +137,10 @@ cp apps/control-plane/.env.example apps/control-plane/.env.local
 npm run dev -w @trashlab/control-plane     # http://localhost:3002
 ```
 
+The control plane does **not** depend on `@trashlab/core`, so you can skip the
+core build if it's the only thing you're running. Ports are pinned per app
+(control plane 3002, globex 3000, acme 3001) so all three run side by side.
+
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" localhost:3002/api/tenants
 curl -s -X POST localhost:3002/api/ci-result \
