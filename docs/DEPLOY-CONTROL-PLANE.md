@@ -174,6 +174,45 @@ end up with a half-configured deployment that looks fine.
 **`GITHUB_DISPATCH_TOKEN` is deliberately weak.** It triggers a workflow; it does
 not provision — see [Step 8](#step-8--the-provisioning-workflow).
 
+#### Creating it
+
+GitHub → **Settings → Developer settings → Personal access tokens → Fine-grained
+tokens → Generate new token**:
+
+| Field | Value |
+|---|---|
+| Resource owner | your account (`chaumn16`) |
+| Repository access | **Only select repositories** → the platform repo |
+| Repository permissions → **Contents** | **Read and write** |
+| Expiration | your call — a short one means remembering to rotate it |
+
+Contents write is what `POST /repos/{owner}/{repo}/dispatches` requires. Nothing
+else needs enabling; the token cannot read your other repositories.
+
+Then set it — the CLI avoids the newline that a dashboard paste often adds:
+
+```bash
+vercel env add GITHUB_DISPATCH_TOKEN production
+vercel --prod            # env vars only take effect on a new deployment
+```
+
+#### If dispatch fails
+
+`/api/health` reports the token's *shape* — never its value:
+
+```json
+"dispatchToken": { "configured": true, "kind": "fine-grained PAT",
+                   "length": 93, "hadSurroundingWhitespace": false }
+```
+
+| What you see | Meaning |
+|---|---|
+| `401 Bad credentials` | the token is not recognised **at all** — expired, mangled, or not a PAT. Not a permissions problem |
+| `hadSurroundingWhitespace: true` | a stray newline came along with the paste; the header was malformed |
+| `kind: "unrecognised…"` | the wrong secret is in the variable |
+| `403` | valid token, missing *Contents: read and write* |
+| `404` | wrong `PLATFORM_REPO`, or the token cannot see that repo — GitHub answers 404 rather than 403 for private repos |
+
 Leave `GITHUB_DISPATCH_TOKEN` unset and the console still works: requests are
 validated and listed, but nothing is dispatched.
 

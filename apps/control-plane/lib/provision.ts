@@ -169,8 +169,12 @@ export async function submit(input: {
 }): Promise<ProvisionRequest> {
   const record: ProvisionRequest = { ...input, status: "queued", at: new Date().toISOString() };
 
-  const token = process.env.GITHUB_DISPATCH_TOKEN;
-  const repo = process.env.PLATFORM_REPO ?? "chaumn16/trashlab-platform";
+  // Trimmed deliberately. A value pasted into a dashboard field very often
+  // carries a trailing newline, and `Authorization: Bearer <token>\n` is a
+  // malformed header — GitHub answers 401 "Bad credentials", which reads as a
+  // wrong token rather than a mangled one.
+  const token = process.env.GITHUB_DISPATCH_TOKEN?.trim();
+  const repo = (process.env.PLATFORM_REPO ?? "chaumn16/trashlab-platform").trim();
 
   if (!token) {
     record.detail = "GITHUB_DISPATCH_TOKEN not configured — recorded but not dispatched.";
@@ -200,7 +204,7 @@ export async function submit(input: {
 
     if (!res.ok) {
       record.status = "failed";
-      record.detail = `GitHub dispatch failed: ${res.status} ${await res.text()}`;
+      record.detail = explainDispatchFailure(res.status, await res.text(), repo);
     } else {
       record.status = "dispatched";
       record.detail = "Provisioning workflow started. Live in about four minutes.";
@@ -212,6 +216,41 @@ export async function submit(input: {
 
   await persist(record);
   return record;
+}
+
+/**
+ * Turns a GitHub API status into something actionable.
+ *
+ * The raw body says "Bad credentials" and nothing about which of the several
+ * causes applies, so every one of them looks the same from the dashboard.
+ */
+function explainDispatchFailure(status: number, body: string, repo: string): string {
+  const brief = body.length > 200 ? body.slice(0, 200) + "…" : body;
+  switch (status) {
+    case 401:
+      return (
+        `GitHub rejected the token (401 Bad credentials). The token is not recognised at all — ` +
+        `this is not a permissions problem. Check, in order: it has not expired; it was pasted ` +
+        `without a trailing newline or space; it is a Personal Access Token and not some other ` +
+        `kind of secret. Regenerate it and re-add GITHUB_DISPATCH_TOKEN, then redeploy. ` +
+        `See /api/health for the token's detected shape.`
+      );
+    case 403:
+      return (
+        `GitHub accepted the token but refused the action (403). The token is valid but lacks ` +
+        `"Contents: read and write" on ${repo}, or the repo has Actions disabled.`
+      );
+    case 404:
+      return (
+        `GitHub returned 404 for ${repo}. Either PLATFORM_REPO is wrong, or the token cannot see ` +
+        `that repository — GitHub answers 404 rather than 403 for private repos a token has no ` +
+        `access to, so this is usually a scope problem rather than a typo.`
+      );
+    case 422:
+      return `GitHub rejected the payload (422): ${brief}. The workflow may not declare a repository_dispatch trigger.`;
+    default:
+      return `GitHub dispatch failed: ${status} ${brief}`;
+  }
 }
 
 async function persist(r: ProvisionRequest): Promise<void> {
