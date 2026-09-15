@@ -327,9 +327,26 @@ Set these once, on the **platform repo** — not on the Vercel project:
 
 ```bash
 gh secret   set VERCEL_TOKEN        --repo chaumn16/trashlab-platform
-gh secret   set FLEET_GITHUB_TOKEN  --repo chaumn16/trashlab-platform   # repo + workflow scope
+gh secret   set FLEET_GITHUB_TOKEN  --repo chaumn16/trashlab-platform   # classic PAT, repo scope
 gh variable set VERCEL_TEAM_ID      --repo chaumn16/trashlab-platform --body "team_xxxx"
 ```
+
+These live on the **platform repository**, not on the Vercel project. They are
+what actually provisions, and they are far more powerful than the console's
+dispatch token:
+
+| Credential | Why it is needed | What it can do |
+|---|---|---|
+| `FLEET_GITHUB_TOKEN` | creates the tenant's repo and protects its main branch | create repositories across your account |
+| `VERCEL_TOKEN` | creates the project, attaches the domain, deploys | deploy anywhere in your Vercel scope |
+| `VERCEL_TEAM_ID` | which Vercel scope to create in | not a secret — `vercel teams ls` |
+
+`FLEET_GITHUB_TOKEN` has to be a **classic** PAT with `repo` scope: fine-grained
+tokens are scoped to repositories that already exist, and this one creates new
+ones. Get it from <https://github.com/settings/tokens>.
+
+The workflow checks all three before doing anything and fails with a message
+naming whichever is missing, rather than part-way through creating resources.
 
 The workflow runs `tenant add` as a **dry run first**, then with `--apply`. A bad
 slug or a duplicate fails before anything is created — provisioning is far

@@ -33,14 +33,43 @@ concurrency:
   group: provision-${{ github.event.client_payload.slug || inputs.slug }}
   cancel-in-progress: false
 
+permissions:
+  contents: write     # the registry commit at the end of provisioning
+
 jobs:
   provision:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # Checked out with the built-in GITHUB_TOKEN, which Actions always
+      # provides. Using a PAT here meant the workflow could not even check
+      # itself out until FLEET_GITHUB_TOKEN was set, and failed with
+      # "Input required and not supplied: token" — which names neither the
+      # missing secret nor what it is for.
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.FLEET_GITHUB_TOKEN }}
+
+      # Fail loudly, early, and specifically. Provisioning needs credentials
+      # this repo cannot supply itself; saying so up front beats a cryptic
+      # failure five steps later, half way through creating things.
+      - name: Check required credentials
+        env:
+          FLEET_GITHUB_TOKEN: ${{ secrets.FLEET_GITHUB_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+        run: |
+          missing=""
+          [ -z "$FLEET_GITHUB_TOKEN" ] && missing="$missing\n  - secret FLEET_GITHUB_TOKEN  (PAT with repo scope; creates the tenant repo)"
+          [ -z "$VERCEL_TOKEN" ]       && missing="$missing\n  - secret VERCEL_TOKEN        (creates the project, domain and deployment)"
+          [ -z "$VERCEL_TEAM_ID" ]     && missing="$missing\n  - variable VERCEL_TEAM_ID    (which Vercel scope to create in)"
+          if [ -n "$missing" ]; then
+            echo "::error::Cannot provision — missing credentials on this repository:$missing"
+            printf 'Set them with:\n'
+            printf '  gh secret   set FLEET_GITHUB_TOKEN --repo %s\n' "$GITHUB_REPOSITORY"
+            printf '  gh secret   set VERCEL_TOKEN       --repo %s\n' "$GITHUB_REPOSITORY"
+            printf '  gh variable set VERCEL_TEAM_ID     --repo %s --body "team_xxx"\n' "$GITHUB_REPOSITORY"
+            exit 1
+          fi
+          echo "All provisioning credentials present."
 
       - uses: actions/setup-node@v4
         with:
